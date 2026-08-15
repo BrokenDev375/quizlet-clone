@@ -1,13 +1,13 @@
 # 📚 Quizlet Clone — Nền tảng học tập Flashcard thông minh
 
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-Vercel-black?style=for-the-badge&logo=vercel)](https://quizlet-clone-7471r43y7-thanh-djts-projects.vercel.app)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Vercel-black?style=for-the-badge&logo=vercel)](https://quizlet-clone-beta.vercel.app)
 [![Next.js](https://img.shields.io/badge/Next.js%2016-black?style=for-the-badge&logo=next.js)](https://nextjs.org/)
 [![TailwindCSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
 [![Supabase](https://img.shields.io/badge/Supabase-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white)](https://supabase.com/)
 
 Ứng dụng web học tập Flashcard trực tuyến lấy cảm hứng từ Quizlet, hỗ trợ đầy đủ 4 chế độ học tập thông minh, quản lý bộ thẻ, phân quyền bảo mật với Supabase RLS và giao diện Tailwind CSS hiện đại.
 
-🌐 **Trải nghiệm trực tiếp:** [https://quizlet-clone-7471r43y7-thanh-djts-projects.vercel.app](https://quizlet-clone-7471r43y7-thanh-djts-projects.vercel.app)
+🌐 **Trải nghiệm trực tiếp:** [https://quizlet-clone-beta.vercel.app](https://quizlet-clone-beta.vercel.app)
 
 ---
 
