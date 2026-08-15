@@ -3,25 +3,16 @@ import { createBrowserClient } from '@supabase/ssr'
 export function getSupabaseUrl(): string {
   const envUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim()
   
-  // Extract project ref if contains supabase.co
-  const match = envUrl.match(/([a-z0-9-]+)\.supabase\.co/i)
+  // Extract project ref from any malformed supabase URL (including missing 'o' like .supabase.c or trailing /rest/v1)
+  const match =
+    envUrl.match(/([a-z0-9-]{15,30})\.supabase/i) ||
+    envUrl.match(/([a-z0-9]{20})/i)
+    
   if (match && match[1]) {
     return `https://${match[1]}.supabase.co`
   }
-  
-  // If user only entered project ID
-  if (/^[a-z0-9]{20}$/i.test(envUrl)) {
-    return `https://${envUrl}.supabase.co`
-  }
 
-  if (envUrl.startsWith('http://') || envUrl.startsWith('https://')) {
-    try {
-      const parsed = new URL(envUrl)
-      return parsed.origin
-    } catch {}
-  }
-
-  // Fallback to current project
+  // Fallback default
   return 'https://downjqvzgmefflxadbem.supabase.co'
 }
 
