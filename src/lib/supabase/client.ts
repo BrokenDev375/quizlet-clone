@@ -1,10 +1,14 @@
 import { createBrowserClient } from '@supabase/ssr'
 
 export function getSupabaseUrl(): string {
-  const url =
+  let url =
     process.env.NEXT_PUBLIC_SUPABASE_URL ||
     'https://downjqvzgmefflxadbem.supabase.co'
-  return url.trim().replace(/\/+$/, '')
+  
+  url = url.trim().replace(/\/+$/, '')
+  // Tự động cắt bỏ /rest/v1 nếu người dùng copy nhầm REST URL
+  url = url.replace(/\/rest\/v1\/?$/, '')
+  return url
 }
 
 export function getSupabaseAnonKey(): string {
