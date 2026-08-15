@@ -32,29 +32,52 @@ export default function SignupPage() {
     }
 
     try {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            full_name: fullName,
-            username: email.split('@')[0] + '_' + Math.random().toString(36).substring(2, 6),
-          },
-        },
+      // 1. Try server-side API first
+      const res = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: email.trim(),
+          password,
+          fullName: fullName.trim(),
+        }),
       })
 
-      if (error) {
-        setErrorMsg(error.message)
-      } else if (data.session) {
-        // Direct session (confirm email turned off)
+      const result = await res.json()
+
+      if (!res.ok || result.error) {
+        setErrorMsg(result.error || 'Đăng ký thất bại')
+      } else if (result.session) {
         router.push('/dashboard')
         router.refresh()
       } else {
-        // Email confirmation required
-        setSuccessMsg('Đăng ký thành công! Vui lòng kiểm tra email của bạn để xác nhận tài khoản trước khi đăng nhập.')
+        setSuccessMsg('Đăng ký thành công! Bạn có thể đăng nhập ngay bây giờ.')
       }
     } catch (err: any) {
-      setErrorMsg('Đã xảy ra lỗi, vui lòng thử lại sau.')
+      // 2. Fallback to client SDK if API route fails
+      try {
+        const { data, error } = await supabase.auth.signUp({
+          email: email.trim(),
+          password,
+          options: {
+            data: {
+              full_name: fullName,
+              username: email.split('@')[0] + '_' + Math.random().toString(36).substring(2, 6),
+            },
+          },
+        })
+
+        if (error) {
+          setErrorMsg(error.message)
+        } else if (data.session) {
+          router.push('/dashboard')
+          router.refresh()
+        } else {
+          setSuccessMsg('Đăng ký thành công! Bạn có thể đăng nhập ngay.')
+        }
+      } catch (fallbackErr: any) {
+        setErrorMsg('Không thể kết nối đến máy chủ. Vui lòng thử lại sau.')
+      }
     } finally {
       setLoading(false)
     }

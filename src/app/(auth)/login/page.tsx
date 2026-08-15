@@ -23,19 +23,37 @@ export default function LoginPage() {
     setErrorMsg(null)
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+      // 1. Try server-side API first (bypasses browser adblock / CORS)
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim(), password }),
       })
 
-      if (error) {
-        setErrorMsg(error.message === 'Invalid login credentials' ? 'Email hoặc mật khẩu không chính xác' : error.message)
+      const result = await res.json()
+
+      if (!res.ok || result.error) {
+        setErrorMsg(result.error || 'Đăng nhập thất bại')
       } else {
         router.push('/dashboard')
         router.refresh()
       }
     } catch (err: any) {
-      setErrorMsg('Đã xảy ra lỗi, vui lòng thử lại sau.')
+      // 2. Fallback to client SDK if API route fails
+      try {
+        const { error } = await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        })
+        if (error) {
+          setErrorMsg(error.message === 'Invalid login credentials' ? 'Email hoặc mật khẩu không chính xác' : error.message)
+        } else {
+          router.push('/dashboard')
+          router.refresh()
+        }
+      } catch (fallbackErr: any) {
+        setErrorMsg('Không thể kết nối đến máy chủ. Vui lòng kiểm tra lại kết nối mạng.')
+      }
     } finally {
       setLoading(false)
     }
