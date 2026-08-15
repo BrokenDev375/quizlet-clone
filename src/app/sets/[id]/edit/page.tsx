@@ -1,3 +1,318 @@
+'use client'
+
+import { useState, useEffect, use } from 'react'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { createClient } from '@/lib/supabase/client'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { Card, CardContent } from '@/components/ui/card'
+import { Plus, Trash2, Globe, Lock, ArrowLeft, Loader2, AlertCircle } from 'lucide-react'
+
+interface CardItem {
+  id?: string
+  term: string
+  definition: string
+}
+
 export default function EditSetPage({ params }: { params: Promise<{ id: string }> }) {
-  return <div>Edit Set Page (coming soon)</div>
+  const resolvedParams = use(params)
+  const setId = resolvedParams.id
+
+  const [title, setTitle] = useState('')
+  const [description, setDescription] = useState('')
+  const [isPublic, setIsPublic] = useState(true)
+  const [cards, setCards] = useState<CardItem[]>([])
+  const [initialLoading, setInitialLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const router = useRouter()
+  const supabase = createClient()
+
+  useEffect(() => {
+    async function loadData() {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        router.push(`/login?next=/sets/${setId}/edit`)
+        return
+      }
+
+      // Fetch Set
+      const { data: setData, error: setError } = await supabase
+        .from('sets')
+        .select('*')
+        .eq('id', setId)
+        .single()
+
+      if (setError || !setData) {
+        setErrorMsg('Không tìm thấy học phần.')
+        setInitialLoading(false)
+        return
+      }
+
+      if (setData.owner_id !== user.id) {
+        setErrorMsg('Bạn không có quyền chỉnh sửa học phần này.')
+        setInitialLoading(false)
+        return
+      }
+
+      setTitle(setData.title)
+      setDescription(setData.description || '')
+      setIsPublic(setData.is_public)
+
+      // Fetch Cards
+      const { data: cardsData } = await supabase
+        .from('cards')
+        .select('*')
+        .eq('set_id', setId)
+        .order('position', { ascending: true })
+
+      if (cardsData) {
+        setCards(cardsData)
+      }
+
+      setInitialLoading(false)
+    }
+
+    loadData()
+  }, [setId])
+
+  const handleAddCard = () => {
+    setCards([
+      ...cards,
+      { term: '', definition: '' },
+    ])
+  }
+
+  const handleRemoveCard = (index: number) => {
+    if (cards.length <= 2) {
+      alert('Một học phần cần tối thiểu 2 thẻ')
+      return
+    }
+    setCards(cards.filter((_, i) => i !== index))
+  }
+
+  const handleCardChange = (index: number, field: 'term' | 'definition', value: string) => {
+    const updated = [...cards]
+    updated[index][field] = value
+    setCards(updated)
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setErrorMsg(null)
+
+    if (!title.trim()) {
+      setErrorMsg('Vui lòng nhập tiêu đề cho học phần')
+      return
+    }
+
+    const validCards = cards.filter((c) => c.term.trim() && c.definition.trim())
+    if (validCards.length < 2) {
+      setErrorMsg('Vui lòng nhập đầy đủ thuật ngữ và định nghĩa cho ít nhất 2 thẻ')
+      return
+    }
+
+    setLoading(true)
+
+    try {
+      // 1. Update set metadata
+      const { error: updateSetError } = await supabase
+        .from('sets')
+        .update({
+          title: title.trim(),
+          description: description.trim() || null,
+          is_public: isPublic,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', setId)
+
+      if (updateSetError) throw updateSetError
+
+      // 2. Refresh cards: Delete all existing and re-insert
+      const { error: deleteCardsError } = await supabase
+        .from('cards')
+        .delete()
+        .eq('set_id', setId)
+
+      if (deleteCardsError) throw deleteCardsError
+
+      const cardPayload = validCards.map((c, idx) => ({
+        set_id: setId,
+        term: c.term.trim(),
+        definition: c.definition.trim(),
+        position: idx,
+      }))
+
+      const { error: insertCardsError } = await supabase
+        .from('cards')
+        .insert(cardPayload)
+
+      if (insertCardsError) throw insertCardsError
+
+      router.push(`/sets/${setId}`)
+      router.refresh()
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Lỗi khi cập nhật học phần')
+      setLoading(false)
+    }
+  }
+
+  if (initialLoading) {
+    return (
+      <div className="max-w-5xl mx-auto px-4 py-16 text-center">
+        <div className="inline-block size-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+        <p className="mt-4 text-sm text-muted-foreground">Đang tải dữ liệu chỉnh sửa...</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="mb-6">
+        <Link href={`/sets/${setId}`} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition">
+          <ArrowLeft className="size-4" />
+          Hủy & quay lại học phần
+        </Link>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-8">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/80 pb-6">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Chỉnh sửa học phần</h1>
+            <p className="text-sm text-muted-foreground mt-1">Cập nhật nội dung các thẻ ghi nhớ</p>
+          </div>
+          <Button
+            type="submit"
+            disabled={loading}
+            className="bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white font-medium px-6 shadow-md shadow-indigo-500/20"
+          >
+            {loading ? <Loader2 className="size-4 animate-spin" /> : 'Lưu thay đổi'}
+          </Button>
+        </div>
+
+        {errorMsg && (
+          <div className="p-4 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive flex items-center gap-2.5">
+            <AlertCircle className="size-5 shrink-0" />
+            <span className="text-sm font-medium">{errorMsg}</span>
+          </div>
+        )}
+
+        <div className="space-y-4">
+          <Input
+            type="text"
+            placeholder="Tiêu đề học phần"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className="text-lg font-semibold h-12 px-4 bg-card/60"
+            required
+          />
+
+          <Textarea
+            placeholder="Mô tả học phần..."
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={2}
+            className="bg-card/60"
+          />
+
+          <div className="flex items-center gap-4 pt-1">
+            <button
+              type="button"
+              onClick={() => setIsPublic(!isPublic)}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border transition ${
+                isPublic
+                  ? 'border-indigo-500/30 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400'
+                  : 'border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400'
+              }`}
+            >
+              {isPublic ? (
+                <>
+                  <Globe className="size-3.5" /> Công khai
+                </>
+              ) : (
+                <>
+                  <Lock className="size-3.5" /> Riêng tư
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Cards */}
+        <div className="space-y-4">
+          <h2 className="text-lg font-bold">Danh sách thẻ ({cards.length})</h2>
+
+          {cards.map((card, index) => (
+            <Card key={index} className="border-border/80 bg-card/60 hover:border-indigo-500/40 transition">
+              <CardContent className="p-4 sm:p-6">
+                <div className="flex items-center justify-between border-b border-border/50 pb-3 mb-4">
+                  <span className="font-bold text-sm text-indigo-600 dark:text-indigo-400">
+                    {index + 1}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveCard(index)}
+                    className="text-muted-foreground hover:text-destructive p-1 rounded-md transition"
+                    title="Xóa thẻ"
+                  >
+                    <Trash2 className="size-4" />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-xs uppercase font-semibold tracking-wider text-muted-foreground">
+                      Thuật ngữ
+                    </label>
+                    <Input
+                      placeholder="Nhập thuật ngữ..."
+                      value={card.term}
+                      onChange={(e) => handleCardChange(index, 'term', e.target.value)}
+                      className="bg-background"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs uppercase font-semibold tracking-wider text-muted-foreground">
+                      Định nghĩa
+                    </label>
+                    <Input
+                      placeholder="Nhập định nghĩa..."
+                      value={card.definition}
+                      onChange={(e) => handleCardChange(index, 'definition', e.target.value)}
+                      className="bg-background"
+                      required
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleAddCard}
+            className="w-full py-6 border-dashed border-2 border-border hover:border-indigo-500 hover:text-indigo-600 font-semibold gap-2 transition"
+          >
+            <Plus className="size-5" />
+            + THÊM THẺ MỚI
+          </Button>
+        </div>
+
+        <div className="flex justify-end pt-4 border-t border-border">
+          <Button
+            type="submit"
+            disabled={loading}
+            size="lg"
+            className="bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white font-semibold px-8 shadow-lg shadow-indigo-500/25"
+          >
+            {loading ? <Loader2 className="size-5 animate-spin" /> : 'Lưu thay đổi'}
+          </Button>
+        </div>
+      </form>
+    </div>
+  )
 }
