@@ -278,7 +278,7 @@ export default function ReadingPage({
 
       {aiError && (
         <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs flex items-center justify-between">
-          <span>⚠️ {aiError} (Hãy thêm <code>GEMINI_API_KEY=...</code> vào <code>.env.local</code> để sử dụng AI)</span>
+          <span>⚠️ {aiError}</span>
           <button onClick={() => setAiError(null)} className="font-bold ml-2">✕</button>
         </div>
       )}
