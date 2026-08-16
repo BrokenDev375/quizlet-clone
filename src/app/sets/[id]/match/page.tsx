@@ -129,12 +129,7 @@ export default function MatchGamePage({ params }: { params: Promise<{ id: string
   const handleTileClick = (item: MatchItem) => {
     if (item.isMatched || isWrong) return
 
-    // Phát âm ngay từ vừa bấm nếu bật âm thanh
-    if (soundEnabled) {
-      speakMultilingualText(item.text)
-    }
-
-    // Nếu là ô đầu tiên được chọn
+    // Nếu là ô đầu tiên được chọn -> Chỉ chọn, không đọc
     if (!selectedItem) {
       setSelectedItem(item)
       return
@@ -148,14 +143,11 @@ export default function MatchGamePage({ params }: { params: Promise<{ id: string
 
     // Kiểm tra ghép đúng cặp (cùng cardId nhưng khác loại term/definition)
     if (selectedItem.cardId === item.cardId && selectedItem.type !== item.type) {
-      // GHÉP ĐÚNG!
+      // GHÉP ĐÚNG CẶP -> Phát âm từ vựng và chuông chúc mừng!
       if (soundEnabled) {
         playSuccessChime()
-        // Phát âm từ chính của cặp thẻ
         const termItem = selectedItem.type === 'term' ? selectedItem : item
-        setTimeout(() => {
-          speakMultilingualText(termItem.text)
-        }, 200)
+        speakMultilingualText(termItem.text)
       }
 
       const updated = items.map((i) =>
