@@ -89,9 +89,17 @@ export default function SpeakPracticePage({
   }, [setId])
 
   const currentCard = cards[currentIndex]
-  const rawSentence = currentCard?.example_sentence?.replace(/\[|\]/g, '').trim()
-  const hasSentence = !!rawSentence
-  const activeTarget = targetMode === 'sentence' && hasSentence ? rawSentence : currentCard?.term || ''
+  const isCardZh = currentCard ? isChineseText(currentCard.term) : false
+  const fallbackSentence = isCardZh
+    ? `我 每天 都 在 练习 ${currentCard?.term || ''}`
+    : `She is actively practicing ${currentCard?.term || ''} in class.`
+
+  const rawSentence =
+    currentCard?.example_sentence && currentCard.example_sentence.trim()
+      ? currentCard.example_sentence.replace(/\[|\]/g, '').trim()
+      : fallbackSentence
+
+  const activeTarget = targetMode === 'sentence' ? rawSentence : currentCard?.term || ''
 
   // Khởi tạo Speech Recognition
   useEffect(() => {
@@ -114,9 +122,17 @@ export default function SpeakPracticePage({
 
         if (cards.length > 0 && currentIndex < cards.length) {
           const card = cards[currentIndex]
-          const target = targetMode === 'sentence' && card.example_sentence
-            ? card.example_sentence.replace(/\[|\]/g, '').trim()
-            : card.term
+          const isZh = isChineseText(card.term)
+          const fallback = isZh
+            ? `我 每天 都 在 练习 ${card.term}`
+            : `She is actively practicing ${card.term} in class.`
+
+          const target =
+            targetMode === 'sentence'
+              ? card.example_sentence && card.example_sentence.trim()
+                ? card.example_sentence.replace(/\[|\]/g, '').trim()
+                : fallback
+              : card.term
 
           // Lấy toàn bộ danh sách các ứng viên âm thanh (Top 5 Alternatives) mà máy thu được
           const candidates: { transcript: string; confidence: number }[] = []
@@ -356,39 +372,37 @@ export default function SpeakPracticePage({
 
       <Progress value={progressPercent} className="h-2" />
 
-      {/* Target Mode Selector: Luyện đọc Từ vựng 🆚 Luyện đọc Cả câu ví dụ */}
-      {hasSentence && (
-        <div className="flex items-center justify-center gap-2 bg-muted/60 p-1.5 rounded-2xl border border-border/60 max-w-md mx-auto">
-          <button
-            type="button"
-            onClick={() => {
-              setTargetMode('term')
-              setScoreResult(null)
-            }}
-            className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
-              targetMode === 'term'
-                ? 'bg-card text-indigo-600 dark:text-indigo-400 shadow-sm border border-border/80'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            <BookOpen className="size-3.5" /> Luyện đọc Từ vựng
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setTargetMode('sentence')
-              setScoreResult(null)
-            }}
-            className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
-              targetMode === 'sentence'
-                ? 'bg-card text-purple-600 dark:text-purple-400 shadow-sm border border-border/80'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            <MessageSquare className="size-3.5" /> Luyện cả câu ví dụ ✨
-          </button>
-        </div>
-      )}
+      {/* Target Mode Selector: Luôn luôn hiển thị để người học có thể chuyển đổi bất cứ lúc nào */}
+      <div className="flex items-center justify-center gap-2 bg-muted/60 p-1.5 rounded-2xl border border-border/60 max-w-md mx-auto">
+        <button
+          type="button"
+          onClick={() => {
+            setTargetMode('term')
+            setScoreResult(null)
+          }}
+          className={`flex-1 py-2 px-4 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+            targetMode === 'term'
+              ? 'bg-card text-indigo-600 dark:text-indigo-400 shadow-sm border border-border/80'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          <BookOpen className="size-4" /> Luyện đọc Từ vựng
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setTargetMode('sentence')
+            setScoreResult(null)
+          }}
+          className={`flex-1 py-2 px-4 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+            targetMode === 'sentence'
+              ? 'bg-card text-purple-600 dark:text-purple-400 shadow-sm border border-border/80'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          <MessageSquare className="size-4" /> Luyện cả câu ví dụ ✨
+        </button>
+      </div>
 
       {!speechSupported && (
         <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs text-center space-y-1">
