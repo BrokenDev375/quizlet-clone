@@ -5,6 +5,8 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { FlashcardSet, Card as CardType } from '@/types/database.types'
+import { speakMultilingualText } from '@/lib/quiz/sentence-templates'
+import { playSuccessChime, playRetryBeep } from '@/lib/quiz/speech-recognition'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { 
@@ -14,13 +16,16 @@ import {
   Trophy, 
   Timer, 
   Sparkles,
-  Zap
+  Zap,
+  Volume2,
+  VolumeX
 } from 'lucide-react'
 
 interface MatchItem {
   id: string
   cardId: string
   text: string
+  phonetic?: string
   type: 'term' | 'definition'
   isMatched: boolean
 }
@@ -30,6 +35,7 @@ export default function MatchGamePage({ params }: { params: Promise<{ id: string
   const setId = resolvedParams.id
 
   const [set, setSet] = useState<FlashcardSet | null>(null)
+  const [allCards, setAllCards] = useState<(CardType & { phonetic?: string })[]>([])
   const [items, setItems] = useState<MatchItem[]>([])
   const [selectedItem, setSelectedItem] = useState<MatchItem | null>(null)
   const [isWrong, setIsWrong] = useState<string | null>(null)
@@ -37,6 +43,8 @@ export default function MatchGamePage({ params }: { params: Promise<{ id: string
   const [gameStarted, setGameStarted] = useState(false)
   const [gameWon, setGameWon] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [soundEnabled, setSoundEnabled] = useState(true)
+
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   const supabase = createClient()
 
@@ -58,8 +66,10 @@ export default function MatchGamePage({ params }: { params: Promise<{ id: string
         .from('cards')
         .select('*')
         .eq('set_id', setId)
+        .order('position', { ascending: true })
 
       if (cardsData && cardsData.length > 0) {
+        setAllCards(cardsData)
         setupGame(cardsData)
       }
 
@@ -84,8 +94,8 @@ export default function MatchGamePage({ params }: { params: Promise<{ id: string
     }
   }, [gameStarted, gameWon])
 
-  const setupGame = (cards: CardType[]) => {
-    // Pick up to 6 pairs for optimal grid
+  const setupGame = (cards: (CardType & { phonetic?: string })[]) => {
+    // Lấy ngẫu nhiên tối đa 6 cặp thẻ để tạo bảng 12 ô cân đối
     const sample = [...cards].sort(() => Math.random() - 0.5).slice(0, 6)
 
     const list: MatchItem[] = []
@@ -94,6 +104,7 @@ export default function MatchGamePage({ params }: { params: Promise<{ id: string
         id: `${c.id}_term`,
         cardId: c.id,
         text: c.term,
+        phonetic: c.phonetic,
         type: 'term',
         isMatched: false,
       })
@@ -106,7 +117,7 @@ export default function MatchGamePage({ params }: { params: Promise<{ id: string
       })
     })
 
-    // Shuffle all tiles
+    // Shuffle toàn bộ các ô
     setItems(list.sort(() => Math.random() - 0.5))
     setSelectedItem(null)
     setIsWrong(null)
@@ -118,39 +129,56 @@ export default function MatchGamePage({ params }: { params: Promise<{ id: string
   const handleTileClick = (item: MatchItem) => {
     if (item.isMatched || isWrong) return
 
-    // If first tile selected
+    // Phát âm ngay từ vừa bấm nếu bật âm thanh
+    if (soundEnabled) {
+      speakMultilingualText(item.text)
+    }
+
+    // Nếu là ô đầu tiên được chọn
     if (!selectedItem) {
       setSelectedItem(item)
       return
     }
 
-    // If clicked the same tile, deselect
+    // Nếu bấm lại chính ô đó -> Bỏ chọn
     if (selectedItem.id === item.id) {
       setSelectedItem(null)
       return
     }
 
-    // Check Match
+    // Kiểm tra ghép đúng cặp (cùng cardId nhưng khác loại term/definition)
     if (selectedItem.cardId === item.cardId && selectedItem.type !== item.type) {
-      // MATCH!
+      // GHÉP ĐÚNG!
+      if (soundEnabled) {
+        playSuccessChime()
+        // Phát âm từ chính của cặp thẻ
+        const termItem = selectedItem.type === 'term' ? selectedItem : item
+        setTimeout(() => {
+          speakMultilingualText(termItem.text)
+        }, 200)
+      }
+
       const updated = items.map((i) =>
         i.cardId === item.cardId ? { ...i, isMatched: true } : i
       )
       setItems(updated)
       setSelectedItem(null)
 
-      // Check win
+      // Kiểm tra hoàn thành tất cả
       const allMatched = updated.every((i) => i.isMatched)
       if (allMatched) {
         setGameWon(true)
       }
     } else {
-      // MISMATCH
+      // GHÉP SAI
+      if (soundEnabled) {
+        playRetryBeep()
+      }
       setIsWrong(item.id)
       setTimeout(() => {
         setSelectedItem(null)
         setIsWrong(null)
-      }, 700)
+      }, 600)
     }
   }
 
@@ -175,9 +203,30 @@ export default function MatchGamePage({ params }: { params: Promise<{ id: string
           Quay lại học phần
         </Link>
 
-        <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 font-mono font-bold text-sm">
-          <Timer className="size-4" />
-          <span>{seconds.toFixed(1)}s</span>
+        <div className="flex items-center gap-3">
+          {/* Nút Bật/Tắt âm thanh phát âm */}
+          <button
+            onClick={() => setSoundEnabled(!soundEnabled)}
+            className="p-2 rounded-xl border border-border/80 bg-card hover:bg-muted/60 text-muted-foreground hover:text-foreground transition flex items-center gap-1.5 text-xs font-semibold"
+            title={soundEnabled ? 'Đang bật âm thanh' : 'Đang tắt âm thanh'}
+          >
+            {soundEnabled ? (
+              <>
+                <Volume2 className="size-4 text-amber-500" />
+                <span className="hidden sm:inline">Phát âm: Bật</span>
+              </>
+            ) : (
+              <>
+                <VolumeX className="size-4 text-muted-foreground" />
+                <span className="hidden sm:inline">Phát âm: Tắt</span>
+              </>
+            )}
+          </button>
+
+          <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 font-mono font-bold text-sm">
+            <Timer className="size-4" />
+            <span>{seconds.toFixed(1)}s</span>
+          </div>
         </div>
       </div>
 
@@ -197,7 +246,7 @@ export default function MatchGamePage({ params }: { params: Promise<{ id: string
 
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-4">
               <Button
-                onClick={() => setupGame(items.map((i) => ({ id: i.cardId, term: i.text, definition: i.text, set_id: setId, position: 0, image_url: null, created_at: '' })))}
+                onClick={() => setupGame(allCards)}
                 className="bg-amber-500 hover:bg-amber-600 text-white font-semibold px-6 gap-2"
               >
                 <RotateCcw className="size-4" />
@@ -239,9 +288,14 @@ export default function MatchGamePage({ params }: { params: Promise<{ id: string
               <button
                 key={item.id}
                 onClick={() => handleTileClick(item)}
-                className={`h-28 p-3.5 rounded-xl border text-sm font-semibold text-center flex items-center justify-center shadow-xs transition-all duration-200 cursor-pointer select-none leading-snug overflow-hidden text-ellipsis ${tileStyle}`}
+                className={`h-28 p-3.5 rounded-xl border text-sm font-semibold text-center flex flex-col items-center justify-center shadow-xs transition-all duration-200 cursor-pointer select-none leading-snug overflow-hidden text-ellipsis gap-1 ${tileStyle}`}
               >
                 <span>{item.text}</span>
+                {item.phonetic && (
+                  <span className="text-[11px] font-mono text-indigo-600 dark:text-indigo-400 font-normal">
+                    {item.phonetic}
+                  </span>
+                )}
               </button>
             )
           })}
