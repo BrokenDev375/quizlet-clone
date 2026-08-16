@@ -717,20 +717,47 @@ export default function TestModePage({
                   </div>
                 )}
 
-                {/* 3. Tự luận / Điền từ vào chỗ trống */}
-                {(q.type === 'written' || q.type === 'cloze_fill_blank') && (
+                {/* 3. Tự luận gõ từ (Written) */}
+                {q.type === 'written' && (
                   <div className="pt-1">
                     <Input
                       type="text"
-                      placeholder={
-                        q.type === 'cloze_fill_blank'
-                          ? 'Điền từ tương ứng...'
-                          : 'Gõ câu trả lời chính xác...'
-                      }
+                      placeholder="Gõ câu trả lời chính xác..."
                       value={userAns}
                       onChange={(e) => handleSelectAnswer(q.id, e.target.value)}
                       className="h-12 text-base px-4 rounded-xl border-border focus-visible:ring-indigo-500 font-medium"
                     />
+                  </div>
+                )}
+
+                {/* 4. Điền từ vào chỗ trống trong câu (Inline Sentence Cloze) */}
+                {q.type === 'cloze_fill_blank' && (
+                  <div className="space-y-4 pt-1">
+                    <div className="p-5 rounded-2xl bg-gradient-to-r from-indigo-500/10 via-card to-blue-500/10 border-2 border-indigo-500/30 text-base sm:text-lg font-medium leading-loose">
+                      <span className="text-foreground">{q.clozePrefix}</span>
+                      <span className="inline-block mx-2 align-baseline">
+                        <input
+                          type="text"
+                          placeholder="[ ______ ]"
+                          value={userAns}
+                          onChange={(e) => handleSelectAnswer(q.id, e.target.value)}
+                          className="w-44 sm:w-52 h-10 text-center font-bold text-base bg-background text-indigo-600 dark:text-indigo-400 border-2 border-indigo-500 shadow-md rounded-xl outline-none focus:ring-4 focus:ring-indigo-500/30 transition-all placeholder:text-muted-foreground/50"
+                        />
+                      </span>
+                      <span className="text-foreground">{q.clozeSuffix}</span>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-muted/40 rounded-xl border border-border/60 text-xs">
+                      <div className="text-muted-foreground">
+                        Nghĩa: <span className="font-bold text-foreground">{q.prompt}</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-muted-foreground">Gợi ý:</span>
+                        <Badge variant="outline" className="font-mono text-xs border-indigo-500/30 bg-indigo-500/5">
+                          {q.letterHint}
+                        </Badge>
+                      </div>
+                    </div>
                   </div>
                 )}
               </CardContent>

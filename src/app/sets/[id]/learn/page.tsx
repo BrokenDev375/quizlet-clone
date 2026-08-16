@@ -714,8 +714,8 @@ export default function LearnModePage({
             </div>
           )}
 
-          {/* DẠNG 4 & 5: TỰ LUẬN / ĐIỀN TỪ VÀO CHỖ TRỐNG (WRITTEN & CLOZE) */}
-          {(currentQ.type === 'written' || currentQ.type === 'cloze_fill_blank') && (
+          {/* DẠNG 4: TỰ LUẬN NHỚ TỪ (WRITTEN RECALL) */}
+          {currentQ.type === 'written' && (
             <form
               onSubmit={(e) => {
                 e.preventDefault()
@@ -723,33 +723,11 @@ export default function LearnModePage({
               }}
               className="space-y-4 pt-2"
             >
-              {currentQ.type === 'cloze_fill_blank' && (
-                <div className="p-4 rounded-xl bg-indigo-500/5 border border-indigo-500/20 space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-semibold text-indigo-600 dark:text-indigo-400">
-                      💡 Gợi ý cấu trúc từ:
-                    </span>
-                    <Badge variant="outline" className="font-mono text-xs border-indigo-500/30">
-                      {currentQ.letterHint}
-                    </Badge>
-                  </div>
-                  <div className="text-sm text-muted-foreground italic">
-                    {currentQ.clozePrefix}
-                    <span className="font-bold not-italic text-foreground">{currentQ.prompt}</span>
-                    {currentQ.clozeSuffix}
-                  </div>
-                </div>
-              )}
-
               <div className="relative">
                 <Input
                   ref={writtenInputRef}
                   type="text"
-                  placeholder={
-                    currentQ.type === 'cloze_fill_blank'
-                      ? 'Điền từ còn thiếu vào đây...'
-                      : 'Gõ thuật ngữ chính xác...'
-                  }
+                  placeholder="Gõ thuật ngữ chính xác..."
                   value={writtenInput}
                   onChange={(e) => setWrittenInput(e.target.value)}
                   disabled={isAnswered}
@@ -774,6 +752,69 @@ export default function LearnModePage({
                     className="h-10 px-6 bg-gradient-to-r from-indigo-600 to-blue-600 text-white font-medium"
                   >
                     Kiểm tra
+                  </Button>
+                </div>
+              ) : null}
+            </form>
+          )}
+
+          {/* DẠNG 5: ĐIỀN TỪ VÀO CHỖ TRỐNG TRONG CÂU (INLINE SENTENCE CLOZE) */}
+          {currentQ.type === 'cloze_fill_blank' && (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault()
+                if (writtenInput.trim()) handleAnswer(writtenInput.trim())
+              }}
+              className="space-y-5 pt-2"
+            >
+              {/* Câu tiếng Anh có ô trống inline */}
+              <div className="p-6 rounded-2xl bg-gradient-to-r from-indigo-500/10 via-card to-blue-500/10 border-2 border-indigo-500/30 text-lg sm:text-xl font-medium leading-loose">
+                <span className="text-foreground">{currentQ.clozePrefix}</span>
+                <span className="inline-block mx-2 align-baseline">
+                  <input
+                    ref={writtenInputRef}
+                    type="text"
+                    placeholder="[ ______ ]"
+                    value={writtenInput}
+                    onChange={(e) => setWrittenInput(e.target.value)}
+                    disabled={isAnswered}
+                    className="w-48 sm:w-56 h-11 text-center font-bold text-lg bg-background text-indigo-600 dark:text-indigo-400 border-2 border-indigo-500 shadow-md rounded-xl outline-none focus:ring-4 focus:ring-indigo-500/30 transition-all placeholder:text-muted-foreground/50"
+                  />
+                </span>
+                <span className="text-foreground">{currentQ.clozeSuffix}</span>
+              </div>
+
+              {/* Thông tin hỗ trợ & Gợi ý */}
+              <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-muted/40 rounded-xl border border-border/60 text-xs">
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <span>Nghĩa tiếng Việt:</span>
+                  <span className="font-bold text-foreground">{currentQ.prompt}</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-muted-foreground">Gợi ý từ:</span>
+                  <Badge variant="outline" className="font-mono text-xs border-indigo-500/30 bg-indigo-500/5">
+                    {currentQ.letterHint}
+                  </Badge>
+                </div>
+              </div>
+
+              {!isAnswered ? (
+                <div className="flex gap-2 justify-end">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleAnswer('')}
+                    className="text-muted-foreground hover:text-foreground text-xs"
+                  >
+                    Tôi không biết (Bỏ qua)
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={!writtenInput.trim()}
+                    className="h-11 px-8 text-base font-semibold bg-gradient-to-r from-indigo-600 to-blue-600 text-white shadow-lg shadow-indigo-500/25"
+                  >
+                    Kiểm tra đáp án
                   </Button>
                 </div>
               ) : null}

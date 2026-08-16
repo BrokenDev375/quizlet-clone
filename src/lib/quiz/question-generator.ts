@@ -1,4 +1,5 @@
 import { Card as CardType } from '@/types/database.types'
+import { generateContextClozeSentence } from './sentence-templates'
 
 export type QuestionType =
   | 'mc_term_to_def'
@@ -172,7 +173,8 @@ export function generateQuestionForCard(
     }
 
     case 'cloze_fill_blank': {
-      // DẠNG MỚI: Điền từ vào chỗ trống ngữ cảnh kèm gợi ý ký tự
+      // DẠNG ĐIỀN TỪ VÀO CÂU NGỮ CẢNH TIẾNG ANH THẬT
+      const cloze = generateContextClozeSentence(card.term, card.definition)
       const hint = generateLetterHint(card.term)
       
       return {
@@ -180,10 +182,10 @@ export function generateQuestionForCard(
         card,
         type: 'cloze_fill_blank',
         prompt: card.definition,
-        promptTypeLabel: 'Điền từ vào chỗ trống trong câu',
+        promptTypeLabel: 'Điền từ còn thiếu vào câu tiếng Anh',
         targetAnswer: card.term,
-        clozePrefix: 'Điền từ tương ứng với định nghĩa: "',
-        clozeSuffix: '" vào ô bên dưới',
+        clozePrefix: cloze.prefix,
+        clozeSuffix: cloze.suffix,
         letterHint: hint,
       }
     }
