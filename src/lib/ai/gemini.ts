@@ -77,8 +77,14 @@ export async function callGeminiJSON<T>(prompt: string): Promise<T> {
     throw new Error('Chưa cấu hình GEMINI_API_KEY trong .env.local')
   }
 
-  // Danh sách các model Gemini thế hệ mới để luân chuyển tự động
-  const models = ['gemini-3.7-flash', 'gemini-3.5-flash', 'gemini-flash-latest']
+  // Danh sách các model Gemini thế hệ mới để luân chuyển tự động (Tận dụng Flash-Lite 500 RPD)
+  const models = [
+    'gemini-3.5-flash-lite', // 500 RPD, 15 RPM - Tốc độ cực nhanh & Hạn mức cao nhất
+    'gemini-3.1-flash-lite', // 500 RPD, 15 RPM - Dự phòng 500 lượt/ngày
+    'gemini-3.7-flash',      // 20 RPD, 5 RPM
+    'gemini-3.6-flash',      // 20 RPD, 5 RPM
+    'gemini-3.5-flash',      // 20 RPD, 5 RPM
+  ]
   let lastError: any = null
 
   for (let attempt = 0; attempt < 2; attempt++) {
