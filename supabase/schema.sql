@@ -30,6 +30,7 @@ create table if not exists public.cards (
   set_id uuid references public.sets(id) on delete cascade not null,
   term text not null,
   definition text not null,
+  phonetic text,
   example_sentence text,
   position int default 0,
   image_url text,

@@ -292,10 +292,15 @@ export default function SetDetailPage({ params }: { params: Promise<{ id: string
                   </button>
                 </div>
 
-                <div className="flex-1 flex items-center justify-center text-center px-4">
+                <div className="flex-1 flex flex-col items-center justify-center text-center px-4 space-y-2">
                   <p className="text-2xl sm:text-4xl font-bold tracking-tight text-foreground">
                     {currentCard.term}
                   </p>
+                  {currentCard.phonetic && (
+                    <span className="text-sm sm:text-base font-mono text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 px-3 py-0.5 rounded-full border border-indigo-500/20">
+                      {currentCard.phonetic}
+                    </span>
+                  )}
                 </div>
 
                 <div className="text-center text-xs text-muted-foreground/70 font-medium">
@@ -322,10 +327,15 @@ export default function SetDetailPage({ params }: { params: Promise<{ id: string
                   </button>
                 </div>
 
-                <div className="flex-1 flex items-center justify-center text-center px-4">
+                <div className="flex-1 flex flex-col items-center justify-center text-center px-4 space-y-2">
                   <p className="text-xl sm:text-3xl font-medium tracking-tight text-foreground leading-relaxed">
                     {currentCard.definition}
                   </p>
+                  {currentCard.example_sentence && (
+                    <p className="text-xs sm:text-sm text-muted-foreground italic max-w-md bg-muted/50 px-3 py-1.5 rounded-xl border border-border/40">
+                      VD: {currentCard.example_sentence}
+                    </p>
+                  )}
                 </div>
 
                 <div className="text-center text-xs text-muted-foreground/70 font-medium">
@@ -433,8 +443,22 @@ export default function SetDetailPage({ params }: { params: Promise<{ id: string
                   {idx + 1}
                 </span>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1">
-                  <p className="font-semibold text-foreground">{card.term}</p>
-                  <p className="text-muted-foreground">{card.definition}</p>
+                  <div>
+                    <p className="font-semibold text-foreground">{card.term}</p>
+                    {card.phonetic && (
+                      <p className="text-xs font-mono text-indigo-600 dark:text-indigo-400 mt-0.5">
+                        {card.phonetic}
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">{card.definition}</p>
+                    {card.example_sentence && (
+                      <p className="text-xs text-muted-foreground/80 italic mt-1">
+                        VD: {card.example_sentence}
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
 

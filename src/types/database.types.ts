@@ -25,6 +25,7 @@ export interface Card {
   set_id: string
   term: string
   definition: string
+  phonetic?: string | null
   example_sentence?: string | null
   position: number
   image_url: string | null

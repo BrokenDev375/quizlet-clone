@@ -17,13 +17,13 @@ import {
   ArrowLeft, 
   Loader2, 
   AlertCircle,
-  HelpCircle
 } from 'lucide-react'
 import Link from 'next/link'
 
 interface CardItem {
   id: string
   term: string
+  phonetic?: string
   definition: string
   example_sentence?: string
 }
@@ -33,9 +33,9 @@ export default function NewSetPage() {
   const [description, setDescription] = useState('')
   const [isPublic, setIsPublic] = useState(true)
   const [cards, setCards] = useState<CardItem[]>([
-    { id: '1', term: '', definition: '', example_sentence: '' },
-    { id: '2', term: '', definition: '', example_sentence: '' },
-    { id: '3', term: '', definition: '', example_sentence: '' },
+    { id: '1', term: '', phonetic: '', definition: '', example_sentence: '' },
+    { id: '2', term: '', phonetic: '', definition: '', example_sentence: '' },
+    { id: '3', term: '', phonetic: '', definition: '', example_sentence: '' },
   ])
   const [importOpen, setImportOpen] = useState(false)
   const [importText, setImportText] = useState('')
@@ -60,7 +60,7 @@ export default function NewSetPage() {
   const handleAddCard = () => {
     setCards([
       ...cards,
-      { id: Math.random().toString(36).substring(2, 9), term: '', definition: '', example_sentence: '' },
+      { id: Math.random().toString(36).substring(2, 9), term: '', phonetic: '', definition: '', example_sentence: '' },
     ])
   }
 
@@ -88,7 +88,6 @@ export default function NewSetPage() {
       const trimmed = line.trim()
       if (!trimmed) return
 
-      // Support Tab, Comma, or " - " separator
       let parts: string[] = []
       if (trimmed.includes('\t')) {
         parts = trimmed.split('\t')
@@ -104,8 +103,9 @@ export default function NewSetPage() {
         parsedCards.push({
           id: Math.random().toString(36).substring(2, 9),
           term: parts[0]?.trim() || '',
-          definition: parts[1]?.trim() || '',
-          example_sentence: parts[2]?.trim() || '',
+          phonetic: parts.length >= 4 ? parts[1]?.trim() : '',
+          definition: parts.length >= 4 ? parts[2]?.trim() : parts[1]?.trim() || '',
+          example_sentence: parts.length >= 4 ? parts[3]?.trim() : parts[2]?.trim() || '',
         })
       }
     })
@@ -154,10 +154,11 @@ export default function NewSetPage() {
 
       if (setError) throw setError
 
-      // 2. Insert Cards (with graceful fallback if example_sentence column is pending)
+      // 2. Insert Cards
       const cardPayload = validCards.map((c, idx) => ({
         set_id: setData.id,
         term: c.term.trim(),
+        phonetic: c.phonetic?.trim() || null,
         definition: c.definition.trim(),
         example_sentence: c.example_sentence?.trim() || null,
         position: idx,
@@ -167,9 +168,9 @@ export default function NewSetPage() {
         .from('cards')
         .insert(cardPayload)
 
-      if (cardsError && cardsError.message?.includes('example_sentence')) {
-        // Fallback without example_sentence if column not yet added
-        const fallbackCards = cardPayload.map(({ example_sentence, ...rest }) => rest)
+      if (cardsError && (cardsError.message?.includes('phonetic') || cardsError.message?.includes('example_sentence'))) {
+        // Graceful fallback if columns pending
+        const fallbackCards = cardPayload.map(({ phonetic, example_sentence, ...rest }) => rest)
         const fallbackRes = await supabase.from('cards').insert(fallbackCards)
         cardsError = fallbackRes.error
       }
@@ -201,7 +202,7 @@ export default function NewSetPage() {
             </Button>
             <div>
               <h1 className="text-2xl font-bold tracking-tight">Tạo học phần mới</h1>
-              <p className="text-xs text-muted-foreground">Thêm các thuật ngữ tiếng Anh, tiếng Trung và định nghĩa</p>
+              <p className="text-xs text-muted-foreground">Hỗ trợ thuật ngữ, phiên âm IPA/Pinyin, định nghĩa và câu ví dụ</p>
             </div>
           </div>
 
@@ -244,10 +245,10 @@ export default function NewSetPage() {
             <CardContent className="p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <span className="font-semibold text-sm">Nhập dữ liệu nhanh</span>
-                <span className="text-xs text-muted-foreground">Định dạng: Từ vựng - Định nghĩa (hoặc Tab/Phẩy)</span>
+                <span className="text-xs text-muted-foreground">Định dạng: Từ vựng - Định nghĩa (hoặc Từ - Phiên âm - Định nghĩa - Ví dụ)</span>
               </div>
               <Textarea
-                placeholder={`Hello - Xin chào\nApple - Quả táo - I like to eat an [apple]\n你好 - Xin chào - 老师，[你好]！`}
+                placeholder={`Hello - Xin chào\n你好 - nǐ hǎo - Xin chào - 老师，[你好]！\nSerendipity - /ˌser.ənˈdɪp.ə.ti/ - Sự tình cờ may mắn - It was pure [serendipity]`}
                 value={importText}
                 onChange={(e) => setImportText(e.target.value)}
                 rows={4}
@@ -319,8 +320,8 @@ export default function NewSetPage() {
 
           {cards.map((card, index) => (
             <Card key={card.id} className="border-border/80 bg-card/60 hover:border-indigo-500/40 transition">
-              <CardContent className="p-4 sm:p-6">
-                <div className="flex items-center justify-between border-b border-border/50 pb-3 mb-4">
+              <CardContent className="p-4 sm:p-6 space-y-4">
+                <div className="flex items-center justify-between border-b border-border/50 pb-3">
                   <span className="font-bold text-sm text-indigo-600 dark:text-indigo-400">
                     Thẻ {index + 1}
                   </span>
@@ -334,35 +335,52 @@ export default function NewSetPage() {
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-1">
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5">
+                  {/* 1. Thuật ngữ */}
+                  <div className="space-y-1 md:col-span-4">
                     <label className="text-xs uppercase font-semibold tracking-wider text-muted-foreground">
-                      Thuật ngữ / Từ vựng (Tiếng Anh, Tiếng Trung...)
+                      Thuật ngữ / Từ vựng
                     </label>
                     <Input
-                      placeholder="VD: Serendipity hoặc 你好..."
+                      placeholder="VD: 你好 hoặc Apple..."
                       value={card.term}
                       onChange={(e) => handleCardChange(index, 'term', e.target.value)}
-                      className="bg-background"
+                      className="bg-background font-medium"
                       required
                     />
                   </div>
-                  <div className="space-y-1">
+
+                  {/* 2. Phiên âm IPA / Pinyin */}
+                  <div className="space-y-1 md:col-span-3">
+                    <label className="text-xs uppercase font-semibold tracking-wider text-muted-foreground flex items-center justify-between">
+                      <span>Phiên âm (Pinyin/IPA)</span>
+                      <span className="text-[10px] text-muted-foreground/80 font-normal">Tùy chọn</span>
+                    </label>
+                    <Input
+                      placeholder="VD: nǐ hǎo hoặc /ˈæp.əl/..."
+                      value={card.phonetic || ''}
+                      onChange={(e) => handleCardChange(index, 'phonetic', e.target.value)}
+                      className="bg-background text-indigo-600 dark:text-indigo-400 font-mono text-sm"
+                    />
+                  </div>
+
+                  {/* 3. Định nghĩa */}
+                  <div className="space-y-1 md:col-span-5">
                     <label className="text-xs uppercase font-semibold tracking-wider text-muted-foreground">
                       Định nghĩa / Ý nghĩa
                     </label>
                     <Input
-                      placeholder="VD: Sự tình cờ may mắn hoặc Xin chào..."
+                      placeholder="VD: Xin chào hoặc Quả táo..."
                       value={card.definition}
                       onChange={(e) => handleCardChange(index, 'definition', e.target.value)}
-                      className="bg-background"
+                      className="bg-background font-medium"
                       required
                     />
                   </div>
                 </div>
 
-                {/* Câu ví dụ tùy chọn */}
-                <div className="mt-3 space-y-1">
+                {/* 4. Câu ví dụ tùy chọn */}
+                <div className="space-y-1">
                   <div className="flex items-center justify-between">
                     <label className="text-xs uppercase font-semibold tracking-wider text-muted-foreground">
                       Câu ví dụ ngữ cảnh (Tùy chọn - Dùng đục lỗ khi thi)
@@ -372,7 +390,7 @@ export default function NewSetPage() {
                     </span>
                   </div>
                   <Input
-                    placeholder="VD: It was pure [serendipity]... hoặc 老师，[你好]！"
+                    placeholder="VD: 老师，[你好]！ hoặc I eat an [apple] every day"
                     value={card.example_sentence || ''}
                     onChange={(e) => handleCardChange(index, 'example_sentence', e.target.value)}
                     className="bg-background text-sm"
