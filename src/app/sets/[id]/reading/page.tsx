@@ -130,6 +130,63 @@ export default function ReadingPage({
     }
   }
 
+  const [isGeneratingAI, setIsGeneratingAI] = useState(false)
+  const [aiError, setAiError] = useState<string | null>(null)
+
+  const handleGenerateAI = async () => {
+    if (!set || cards.length === 0 || isGeneratingAI) return
+    setIsGeneratingAI(true)
+    setAiError(null)
+
+    try {
+      const res = await fetch('/api/ai/reading', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cards, setTitle: set.title }),
+      })
+
+      if (!res.ok) {
+        const errData = await res.json()
+        throw new Error(errData.error || 'Lỗi khi gọi Gemini AI')
+      }
+
+      const aiData = await res.json()
+
+      const newPassage: ReadingPassage = {
+        id: `ai_passage_${Date.now()}`,
+        title: aiData.title || `Bài đọc AI: ${set.title}`,
+        genre: aiData.genre || 'Sáng tác bởi Gemini AI',
+        content: aiData.content,
+        translation: aiData.translation,
+        targetWords: cards.slice(0, 8).map((c) => ({
+          term: c.term,
+          phonetic: c.phonetic || undefined,
+          definition: c.definition,
+        })),
+        questions: (aiData.questions || []).map((q: any, qIdx: number) => ({
+          id: `ai_q_${qIdx}`,
+          question: q.question,
+          options: q.options,
+          correctIndex: q.correctIndex ?? 0,
+          explanation: q.explanation || 'Đáp án chính xác.',
+        })),
+      }
+
+      setPassages((prev) => [newPassage, ...prev])
+      setCurrentPassageIdx(0)
+      setSelectedAnswers({})
+      setQuizSubmitted(false)
+      setSelectedWord(null)
+      setShowTranslation(false)
+      playSuccessChime()
+    } catch (err: any) {
+      console.warn('AI reading generation fallback:', err)
+      setAiError(err.message || 'Chưa cấu hình GEMINI_API_KEY')
+    } finally {
+      setIsGeneratingAI(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-[60vh] flex flex-col items-center justify-center space-y-4">
@@ -175,16 +232,35 @@ export default function ReadingPage({
           </Link>
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Đọc hiểu ngữ cảnh</h1>
-            <p className="text-xs text-muted-foreground">Học phần: {set.title} ({passages.length} bài đọc chủ đề)</p>
+            <p className="text-xs text-muted-foreground">Học phần: {set.title} ({passages.length} bài đọc)</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto">
+        <div className="flex items-center flex-wrap gap-2 w-full sm:w-auto">
+          {/* Magic AI Button */}
+          <Button
+            size="sm"
+            onClick={handleGenerateAI}
+            disabled={isGeneratingAI}
+            className="text-xs gap-1.5 bg-gradient-to-r from-purple-600 via-indigo-600 to-pink-600 text-white font-bold shadow-md shadow-purple-500/20 hover:scale-105 transition-all"
+          >
+            {isGeneratingAI ? (
+              <>
+                <div className="size-3 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                Gemini đang viết...
+              </>
+            ) : (
+              <>
+                <Sparkles className="size-3.5" /> ✨ Nhờ Gemini AI viết bài mới
+              </>
+            )}
+          </Button>
+
           <Button
             variant="outline"
             size="sm"
             onClick={() => setShowTranslation(!showTranslation)}
-            className="text-xs gap-1.5 flex-1 sm:flex-initial"
+            className="text-xs gap-1.5"
           >
             {showTranslation ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
             {showTranslation ? 'Ẩn bản dịch' : 'Dịch toàn bài'}
@@ -193,12 +269,19 @@ export default function ReadingPage({
           <Button
             size="sm"
             onClick={() => speakMultilingualText(currentPassage.content)}
-            className="text-xs gap-1.5 bg-gradient-to-r from-indigo-600 to-blue-600 text-white font-medium shadow-md shadow-indigo-500/20 flex-1 sm:flex-initial"
+            className="text-xs gap-1.5 bg-gradient-to-r from-indigo-600 to-blue-600 text-white font-medium shadow-md shadow-indigo-500/20"
           >
-            <Volume2 className="size-3.5" /> Nghe bài đọc
+            <Volume2 className="size-3.5" /> Nghe
           </Button>
         </div>
       </div>
+
+      {aiError && (
+        <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs flex items-center justify-between">
+          <span>⚠️ {aiError} (Hãy thêm <code>GEMINI_API_KEY=...</code> vào <code>.env.local</code> để sử dụng AI)</span>
+          <button onClick={() => setAiError(null)} className="font-bold ml-2">✕</button>
+        </div>
+      )}
 
       {/* Multi-Passage Selector Tabs */}
       {passages.length > 1 && (
