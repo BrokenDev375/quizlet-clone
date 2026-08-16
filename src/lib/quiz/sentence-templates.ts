@@ -18,22 +18,95 @@ export function isChineseText(text: string): boolean {
 }
 
 /**
- * Phát âm Text-to-Speech tự động nhận diện tiếng Anh (en-US) hoặc tiếng Trung (zh-CN)
+ * Khởi tạo & nạp danh sách giọng đọc sẵn cho trình duyệt di động (iOS Safari & Android Chrome)
+ */
+let cachedVoices: SpeechSynthesisVoice[] = []
+
+function loadVoices(): SpeechSynthesisVoice[] {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return []
+  if (cachedVoices.length > 0) return cachedVoices
+  cachedVoices = window.speechSynthesis.getVoices()
+  return cachedVoices
+}
+
+if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+  loadVoices()
+  if (window.speechSynthesis.onvoiceschanged !== undefined) {
+    window.speechSynthesis.onvoiceschanged = () => {
+      cachedVoices = window.speechSynthesis.getVoices()
+    }
+  }
+
+  // Mở khóa SpeechSynthesis & AudioContext trên lần chạm đầu tiên của người dùng di động (iOS Audio Unlock)
+  const unlockMobileAudio = () => {
+    try {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.resume()
+      }
+    } catch (e) {}
+    window.removeEventListener('touchstart', unlockMobileAudio)
+    window.removeEventListener('click', unlockMobileAudio)
+  }
+
+  window.addEventListener('touchstart', unlockMobileAudio, { once: true, passive: true })
+  window.addEventListener('click', unlockMobileAudio, { once: true, passive: true })
+}
+
+/**
+ * Phát âm Text-to-Speech đa ngôn ngữ tối ưu 100% cho điện thoại (iOS Safari & Android Chrome)
  */
 export function speakMultilingualText(text: string) {
   if (typeof window === 'undefined' || !('speechSynthesis' in window) || !text) return
-  window.speechSynthesis.cancel()
-  const utterance = new SpeechSynthesisUtterance(text.trim())
 
-  if (isChineseText(text)) {
-    utterance.lang = 'zh-CN'
-    utterance.rate = 0.85 // Tiếng Trung phát âm tốc độ chuẩn học tập
-  } else {
-    utterance.lang = 'en-US'
-    utterance.rate = 0.95
+  try {
+    // 1. Đảm bảo trạng thái không bị kẹt (resume)
+    window.speechSynthesis.resume()
+    window.speechSynthesis.cancel()
+
+    const cleanText = text.trim()
+    const isZh = isChineseText(cleanText)
+    const utterance = new SpeechSynthesisUtterance(cleanText)
+
+    const voices = loadVoices()
+
+    if (isZh) {
+      utterance.lang = 'zh-CN'
+      utterance.rate = 0.85 // Tốc độ chuẩn cho học tập
+      // Ưu tiên chọn voice tiếng Trung chuẩn trên thiết bị
+      const zhVoice = voices.find(
+        (v) =>
+          v.lang.startsWith('zh') ||
+          v.name.includes('Chinese') ||
+          v.name.includes('Ting-Ting') ||
+          v.name.includes('Sin-Ji') ||
+          v.name.includes('Mei-Jia')
+      )
+      if (zhVoice) utterance.voice = zhVoice
+    } else {
+      utterance.lang = 'en-US'
+      utterance.rate = 0.95
+      // Ưu tiên chọn voice tiếng Anh chuẩn trên thiết bị
+      const enVoice = voices.find(
+        (v) =>
+          (v.lang.startsWith('en') || v.name.includes('English') || v.name.includes('Samantha') || v.name.includes('Google')) &&
+          !v.name.includes('zh')
+      )
+      if (enVoice) utterance.voice = enVoice
+    }
+
+    utterance.volume = 1.0
+
+    // Phát âm với timeout nhỏ để iOS WebKit không hủy request
+    setTimeout(() => {
+      try {
+        window.speechSynthesis.speak(utterance)
+      } catch (err) {
+        console.warn('Speech synthesis speak error:', err)
+      }
+    }, 15)
+  } catch (err) {
+    console.warn('Multilingual speech error:', err)
   }
-
-  window.speechSynthesis.speak(utterance)
 }
 
 /**
@@ -59,73 +132,65 @@ export function generateSmartLetterHint(term: string): string {
 }
 
 /**
- * Sinh câu ngữ cảnh đục lỗ:
- * 1. Ưu tiên lấy từ `exampleSentence` do người dùng nhập (nếu có dấu [từ] hoặc chứa từ).
- * 2. Nếu không có câu ví dụ riêng: Sử dụng mẫu câu ngữ cảnh học thuật chuẩn xác (không bao giờ lệch nghĩa).
+ * Sinh câu điền từ ngữ cảnh thông minh (Contextual Cloze) từ mẫu câu có sẵn hoặc template
  */
-export function generateContextClozeSentence(
+export function generateContextualCloze(
   term: string,
   definition: string,
-  customExample?: string | null
+  existingSentence?: string | null
 ): ClozeSentence {
   const cleanTerm = term.trim()
   const isZh = isChineseText(cleanTerm)
 
-  // 1. NẾU CÓ CÂU VÍ DỤ TỰ NHẬP
-  if (customExample && customExample.trim()) {
-    const ex = customExample.trim()
+  // 1. Nếu có câu ví dụ tự nhập
+  if (existingSentence && existingSentence.trim()) {
+    const raw = existingSentence.trim()
+    const bracketMatch = raw.match(/\[(.*?)\]/)
 
-    // Trường hợp 1: Có chứa cú pháp [từ_cần_điền]
-    const bracketMatch = ex.match(/^(.*?)\[(.*?)\](.*)$/)
-    if (bracketMatch) {
-      const prefix = bracketMatch[1]
-      const target = bracketMatch[2]
-      const suffix = bracketMatch[3]
+    if (bracketMatch && bracketMatch[1]) {
+      const parts = raw.split(/\[.*?\]/)
       return {
-        prefix,
-        suffix,
-        fullSentence: `${prefix}${target}${suffix}`,
-        hint: definition,
+        prefix: parts[0] || '',
+        suffix: parts[1] || '',
+        fullSentence: raw.replace(/\[|\]/g, ''),
+        hint: `Điền từ thích hợp nghĩa: "${definition}"`,
         isChinese: isZh,
       }
     }
 
-    // Trường hợp 2: Câu có chứa từ vựng (không cần ngoặc vuông)
-    const lowerEx = ex.toLowerCase()
-    const lowerTerm = cleanTerm.toLowerCase()
-    const termIndex = lowerEx.indexOf(lowerTerm)
-
-    if (termIndex !== -1) {
-      const prefix = ex.substring(0, termIndex)
-      const suffix = ex.substring(termIndex + cleanTerm.length)
+    if (raw.toLowerCase().includes(cleanTerm.toLowerCase())) {
+      const regex = new RegExp(cleanTerm, 'i')
+      const parts = raw.split(regex)
       return {
-        prefix,
-        suffix,
-        fullSentence: ex,
-        hint: definition,
+        prefix: parts[0] || '',
+        suffix: parts.slice(1).join(cleanTerm) || '',
+        fullSentence: raw,
+        hint: `Nghĩa: "${definition}"`,
         isChinese: isZh,
       }
     }
   }
 
-  // 2. NẾU CHƯA CÓ CÂU VÍ DỤ RIÊNG -> DÙNG MẪU CÂU QUY CHUẨN ĐỊNH NGHĨA CHUẨN XÁC
+  // 2. Mẫu câu tiếng Trung
   if (isZh) {
-    // Mẫu câu chuẩn tiếng Trung
     return {
-      prefix: 'Trong tiếng Trung, từ "',
-      suffix: `" có nghĩa là: "${definition}".`,
-      fullSentence: `Trong tiếng Trung, từ "${cleanTerm}" có nghĩa là: "${definition}".`,
-      hint: definition,
+      prefix: '我 每天 都 在 学习 ',
+      suffix: '。',
+      fullSentence: `我 每天 都 在 学习 ${cleanTerm}。`,
+      hint: `Chữ Hán mang nghĩa: "${definition}"`,
       isChinese: true,
     }
   }
 
-  // Mẫu câu chuẩn tiếng Anh
+  // 3. Mẫu câu tiếng Anh
   return {
-    prefix: 'In English, the term "',
-    suffix: `" is defined as: "${definition}".`,
-    fullSentence: `In English, the term "${cleanTerm}" is defined as: "${definition}".`,
-    hint: definition,
+    prefix: 'Learning ',
+    suffix: ' is very important for everyday communication.',
+    fullSentence: `Learning ${cleanTerm} is very important for everyday communication.`,
+    hint: `Meaning: "${definition}"`,
     isChinese: false,
   }
 }
+
+export const generateContextClozeSentence = generateContextualCloze
+
