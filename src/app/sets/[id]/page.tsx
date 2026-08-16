@@ -491,6 +491,13 @@ export default function SetDetailPage({ params }: { params: Promise<{ id: string
           <h2 className="text-xl font-bold tracking-tight">
             Thuật ngữ trong học phần này ({cards.length})
           </h2>
+          {isOwner && (
+            <Link href={`/sets/${setId}/edit`}>
+              <Button variant="outline" size="sm" className="gap-1.5 text-xs text-indigo-600 dark:text-indigo-400 border-indigo-500/30 hover:bg-indigo-500/10">
+                <Edit3 className="size-3.5" /> Chỉnh sửa thẻ
+              </Button>
+            </Link>
+          )}
         </div>
 
         <div className="space-y-3">
