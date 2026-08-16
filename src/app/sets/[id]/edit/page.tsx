@@ -4,11 +4,12 @@ import { useState, useEffect, use } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import { pinyin } from 'pinyin-pro'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent } from '@/components/ui/card'
-import { Plus, Trash2, Globe, Lock, ArrowLeft, Loader2, AlertCircle } from 'lucide-react'
+import { Plus, Trash2, Globe, Lock, ArrowLeft, Loader2, AlertCircle, Wand2 } from 'lucide-react'
 
 interface CardItem {
   id?: string
@@ -98,6 +99,33 @@ export default function EditSetPage({ params }: { params: Promise<{ id: string }
   const handleCardChange = (index: number, field: keyof CardItem, value: string) => {
     const updated = [...cards]
     updated[index] = { ...updated[index], [field]: value }
+
+    // Tự động sinh Pinyin nếu gõ chữ Hán
+    if (field === 'term' && value.trim()) {
+      if (/[\u4e00-\u9fa5]/.test(value)) {
+        try {
+          const autoPinyin = pinyin(value.trim())
+          if (autoPinyin) {
+            updated[index].phonetic = autoPinyin
+          }
+        } catch (e) {}
+      }
+    }
+
+    setCards(updated)
+  }
+
+  const handleAutoPinyinAll = () => {
+    const updated = cards.map((c) => {
+      if (c.term && /[\u4e00-\u9fa5]/.test(c.term)) {
+        try {
+          return { ...c, phonetic: pinyin(c.term.trim()) }
+        } catch (e) {
+          return c
+        }
+      }
+      return c
+    })
     setCards(updated)
   }
 
@@ -154,7 +182,6 @@ export default function EditSetPage({ params }: { params: Promise<{ id: string }
         .insert(cardPayload)
 
       if (insertCardsError && (insertCardsError.message?.includes('phonetic') || insertCardsError.message?.includes('example_sentence'))) {
-        // Graceful fallback if columns pending
         const fallbackCards = cardPayload.map(({ phonetic, example_sentence, ...rest }) => rest)
         const fallbackRes = await supabase.from('cards').insert(fallbackCards)
         insertCardsError = fallbackRes.error
@@ -193,17 +220,30 @@ export default function EditSetPage({ params }: { params: Promise<{ id: string }
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-border/80 pb-5">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Chỉnh sửa học phần</h1>
-            <p className="text-xs text-muted-foreground">Cập nhật thuật ngữ, phiên âm IPA/Pinyin, định nghĩa và câu ví dụ</p>
+            <p className="text-xs text-muted-foreground">Tự động sinh Pinyin tiếng Trung, hỗ trợ phiên âm IPA và câu ví dụ</p>
           </div>
 
-          <Button
-            type="submit"
-            disabled={loading}
-            className="bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white font-medium shadow-md shadow-indigo-500/20"
-          >
-            {loading ? <Loader2 className="size-4 animate-spin mr-2" /> : null}
-            Lưu thay đổi
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleAutoPinyinAll}
+              className="gap-1.5 text-xs text-indigo-600 dark:text-indigo-400 border-indigo-500/30"
+              title="Tự động tạo Pinyin cho toàn bộ chữ Hán"
+            >
+              <Wand2 className="size-3.5" /> Tự sinh Pinyin
+            </Button>
+
+            <Button
+              type="submit"
+              disabled={loading}
+              className="bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white font-medium shadow-md shadow-indigo-500/20"
+            >
+              {loading ? <Loader2 className="size-4 animate-spin mr-2" /> : null}
+              Lưu thay đổi
+            </Button>
+          </div>
         </div>
 
         {errorMsg && (
@@ -304,14 +344,14 @@ export default function EditSetPage({ params }: { params: Promise<{ id: string }
                   {/* 2. Phiên âm IPA / Pinyin */}
                   <div className="space-y-1 md:col-span-3">
                     <label className="text-xs uppercase font-semibold tracking-wider text-muted-foreground flex items-center justify-between">
-                      <span>Phiên âm (Pinyin/IPA)</span>
-                      <span className="text-[10px] text-muted-foreground/80 font-normal">Tùy chọn</span>
+                      <span className="text-indigo-600 dark:text-indigo-400 font-bold">Phiên âm (Pinyin/IPA)</span>
+                      <span className="text-[10px] text-muted-foreground/80 font-normal">Tự điền Pinyin</span>
                     </label>
                     <Input
                       placeholder="VD: nǐ hǎo hoặc /ˈæp.əl/..."
                       value={card.phonetic || ''}
                       onChange={(e) => handleCardChange(index, 'phonetic', e.target.value)}
-                      className="bg-background text-indigo-600 dark:text-indigo-400 font-mono text-sm"
+                      className="bg-background text-indigo-600 dark:text-indigo-400 font-mono text-sm font-semibold border-indigo-500/30"
                     />
                   </div>
 

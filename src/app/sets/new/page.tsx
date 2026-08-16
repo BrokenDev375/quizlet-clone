@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { pinyin } from 'pinyin-pro'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -17,6 +18,7 @@ import {
   ArrowLeft, 
   Loader2, 
   AlertCircle,
+  Wand2,
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -75,6 +77,35 @@ export default function NewSetPage() {
   const handleCardChange = (index: number, field: keyof CardItem, value: string) => {
     const updated = [...cards]
     updated[index] = { ...updated[index], [field]: value }
+
+    // Tự động sinh Pinyin tiếng Trung nếu người dùng gõ chữ Hán
+    if (field === 'term' && value.trim()) {
+      if (/[\u4e00-\u9fa5]/.test(value)) {
+        try {
+          const autoPinyin = pinyin(value.trim())
+          if (autoPinyin) {
+            updated[index].phonetic = autoPinyin
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+    }
+
+    setCards(updated)
+  }
+
+  const handleAutoPinyinAll = () => {
+    const updated = cards.map((c) => {
+      if (c.term && /[\u4e00-\u9fa5]/.test(c.term)) {
+        try {
+          return { ...c, phonetic: pinyin(c.term.trim()) }
+        } catch (e) {
+          return c
+        }
+      }
+      return c
+    })
     setCards(updated)
   }
 
@@ -100,12 +131,24 @@ export default function NewSetPage() {
       }
 
       if (parts.length >= 2) {
+        const term = parts[0]?.trim() || ''
+        let phonetic = parts.length >= 4 ? parts[1]?.trim() : ''
+        const definition = parts.length >= 4 ? parts[2]?.trim() : parts[1]?.trim() || ''
+        const example_sentence = parts.length >= 4 ? parts[3]?.trim() : parts[2]?.trim() || ''
+
+        // Tự động sinh Pinyin nếu thiếu
+        if (!phonetic && /[\u4e00-\u9fa5]/.test(term)) {
+          try {
+            phonetic = pinyin(term)
+          } catch (e) {}
+        }
+
         parsedCards.push({
           id: Math.random().toString(36).substring(2, 9),
-          term: parts[0]?.trim() || '',
-          phonetic: parts.length >= 4 ? parts[1]?.trim() : '',
-          definition: parts.length >= 4 ? parts[2]?.trim() : parts[1]?.trim() || '',
-          example_sentence: parts.length >= 4 ? parts[3]?.trim() : parts[2]?.trim() || '',
+          term,
+          phonetic,
+          definition,
+          example_sentence,
         })
       }
     })
@@ -169,7 +212,6 @@ export default function NewSetPage() {
         .insert(cardPayload)
 
       if (cardsError && (cardsError.message?.includes('phonetic') || cardsError.message?.includes('example_sentence'))) {
-        // Graceful fallback if columns pending
         const fallbackCards = cardPayload.map(({ phonetic, example_sentence, ...rest }) => rest)
         const fallbackRes = await supabase.from('cards').insert(fallbackCards)
         cardsError = fallbackRes.error
@@ -202,7 +244,7 @@ export default function NewSetPage() {
             </Button>
             <div>
               <h1 className="text-2xl font-bold tracking-tight">Tạo học phần mới</h1>
-              <p className="text-xs text-muted-foreground">Hỗ trợ thuật ngữ, phiên âm IPA/Pinyin, định nghĩa và câu ví dụ</p>
+              <p className="text-xs text-muted-foreground">Tự động sinh Pinyin tiếng Trung, hỗ trợ phiên âm IPA và câu ví dụ</p>
             </div>
           </div>
 
@@ -211,10 +253,21 @@ export default function NewSetPage() {
               type="button"
               variant="outline"
               size="sm"
+              onClick={handleAutoPinyinAll}
+              className="gap-1.5 text-xs text-indigo-600 dark:text-indigo-400 border-indigo-500/30"
+              title="Tự động tạo Pinyin cho toàn bộ chữ Hán"
+            >
+              <Wand2 className="size-3.5" /> Tự sinh Pinyin
+            </Button>
+
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
               onClick={() => setImportOpen(!importOpen)}
               className="gap-1.5 text-xs flex-1 sm:flex-initial"
             >
-              <FileText className="size-3.5" /> Nhập nhanh (CSV/Text)
+              <FileText className="size-3.5" /> Nhập nhanh (CSV)
             </Button>
 
             <Button
@@ -248,7 +301,7 @@ export default function NewSetPage() {
                 <span className="text-xs text-muted-foreground">Định dạng: Từ vựng - Định nghĩa (hoặc Từ - Phiên âm - Định nghĩa - Ví dụ)</span>
               </div>
               <Textarea
-                placeholder={`Hello - Xin chào\n你好 - nǐ hǎo - Xin chào - 老师，[你好]！\nSerendipity - /ˌser.ənˈdɪp.ə.ti/ - Sự tình cờ may mắn - It was pure [serendipity]`}
+                placeholder={`Hello - Xin chào\n你好 - Xin chào (Hệ thống tự điền Pinyin: nǐ hǎo)\nSerendipity - /ˌser.ənˈdɪp.ə.ti/ - Sự tình cờ may mắn - It was pure [serendipity]`}
                 value={importText}
                 onChange={(e) => setImportText(e.target.value)}
                 rows={4}
@@ -353,14 +406,14 @@ export default function NewSetPage() {
                   {/* 2. Phiên âm IPA / Pinyin */}
                   <div className="space-y-1 md:col-span-3">
                     <label className="text-xs uppercase font-semibold tracking-wider text-muted-foreground flex items-center justify-between">
-                      <span>Phiên âm (Pinyin/IPA)</span>
-                      <span className="text-[10px] text-muted-foreground/80 font-normal">Tùy chọn</span>
+                      <span className="text-indigo-600 dark:text-indigo-400 font-bold">Phiên âm (Pinyin/IPA)</span>
+                      <span className="text-[10px] text-muted-foreground/80 font-normal">Tự điền Pinyin</span>
                     </label>
                     <Input
                       placeholder="VD: nǐ hǎo hoặc /ˈæp.əl/..."
                       value={card.phonetic || ''}
                       onChange={(e) => handleCardChange(index, 'phonetic', e.target.value)}
-                      className="bg-background text-indigo-600 dark:text-indigo-400 font-mono text-sm"
+                      className="bg-background text-indigo-600 dark:text-indigo-400 font-mono text-sm font-semibold border-indigo-500/30"
                     />
                   </div>
 
