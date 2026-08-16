@@ -27,7 +27,11 @@ import {
   XCircle,
   HelpCircle,
   ArrowRight,
+  Layers,
+  ChevronDown,
 } from 'lucide-react'
+
+const BATCH_SIZE = 20 // Chia mỗi chặng 20 từ để học tập hiệu quả
 
 export default function GrammarPage({
   params,
@@ -38,7 +42,10 @@ export default function GrammarPage({
   const setId = resolvedParams.id
 
   const [set, setSet] = useState<FlashcardSet | null>(null)
-  const [cards, setCards] = useState<(CardType & { phonetic?: string; example_sentence?: string })[]>([])
+  const [allCards, setAllCards] = useState<(CardType & { phonetic?: string; example_sentence?: string })[]>([])
+  const [currentBatchIndex, setCurrentBatchIndex] = useState(0) // 0 = 1-20, 1 = 21-40...
+  const [isAllMode, setIsAllMode] = useState(false)
+
   const [exercises, setExercises] = useState<GrammarExercise[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
   const [selectedTokens, setSelectedTokens] = useState<string[]>([])
@@ -76,9 +83,8 @@ export default function GrammarPage({
 
       if (cardsData && cardsData.length > 0) {
         const unpacked = cardsData.map(unpackCardContent)
-        setCards(unpacked)
-        const genEx = generateGrammarExercises(unpacked)
-        setExercises(genEx)
+        setAllCards(unpacked)
+        loadBatchExercises(unpacked, 0, false)
       }
 
       setLoading(false)
@@ -87,16 +93,54 @@ export default function GrammarPage({
     loadData()
   }, [setId])
 
+  // Nạp danh sách bài tập theo nhóm 20 từ hoặc tất cả
+  const loadBatchExercises = (
+    cardsList: typeof allCards,
+    batchIdx: number,
+    allMode: boolean
+  ) => {
+    let targetCards = cardsList
+    if (!allMode && cardsList.length > BATCH_SIZE) {
+      const start = batchIdx * BATCH_SIZE
+      const end = start + BATCH_SIZE
+      targetCards = cardsList.slice(start, end)
+    }
+
+    const genEx = generateGrammarExercises(targetCards)
+    setExercises(genEx)
+    setCurrentIndex(0)
+    setScoreCount(0)
+    setIsCompleted(false)
+    setSelectedTokens([])
+    setIsAnswered(false)
+  }
+
+  const handleSelectBatch = (batchIdx: number) => {
+    setCurrentBatchIndex(batchIdx)
+    setIsAllMode(false)
+    loadBatchExercises(allCards, batchIdx, false)
+  }
+
+  const handleSelectAll = () => {
+    setIsAllMode(true)
+    loadBatchExercises(allCards, 0, true)
+  }
+
+  // Tạo câu ngữ pháp mới bằng Gemini AI cho nhóm từ đang học
   const handleGenerateAI = async () => {
-    if (!set || cards.length === 0 || isGeneratingAI) return
+    if (!set || allCards.length === 0 || isGeneratingAI) return
     setIsGeneratingAI(true)
     setAiError(null)
+
+    const activeBatchCards = isAllMode
+      ? allCards.slice(0, 15)
+      : allCards.slice(currentBatchIndex * BATCH_SIZE, (currentBatchIndex + 1) * BATCH_SIZE)
 
     try {
       const res = await fetch('/api/ai/grammar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cards, setTitle: set.title }),
+        body: JSON.stringify({ cards: activeBatchCards, setTitle: set.title }),
       })
 
       if (!res.ok) {
@@ -143,24 +187,39 @@ export default function GrammarPage({
     }
   }, [currentIndex, exercises, isCompleted])
 
-  const handlePickToken = (tokenObj: { id: string; word: string }) => {
+  const handleSelectWordToken = (token: { id: string; word: string }) => {
     if (isAnswered) return
-    setSelectedTokens([...selectedTokens, tokenObj.word])
-    setAvailableTokens(availableTokens.filter((t) => t.id !== tokenObj.id))
+    setSelectedTokens((prev) => [...prev, token.word])
+    setAvailableTokens((prev) => prev.filter((t) => t.id !== token.id))
   }
 
-  const handleRemoveToken = (index: number) => {
+  const handleRemoveWordToken = (indexToRemove: number) => {
     if (isAnswered) return
-    const wordToRemove = selectedTokens[index]
-    setSelectedTokens(selectedTokens.filter((_, i) => i !== index))
-    setAvailableTokens([
-      ...availableTokens,
-      { id: `${wordToRemove}_${Math.random()}`, word: wordToRemove },
+    const removedWord = selectedTokens[indexToRemove]
+    setSelectedTokens((prev) => prev.filter((_, idx) => idx !== indexToRemove))
+    setAvailableTokens((prev) => [
+      ...prev,
+      { id: `${removedWord}_${Date.now()}_${Math.random()}`, word: removedWord },
     ])
   }
 
+  const handleResetTokens = () => {
+    if (isAnswered) return
+    if (exercises.length > 0 && currentIndex < exercises.length) {
+      const ex = exercises[currentIndex]
+      setSelectedTokens([])
+      setAvailableTokens(
+        ex.scrambledWords.map((w, idx) => ({
+          id: `${w}_${idx}_${Math.random()}`,
+          word: w,
+        }))
+      )
+    }
+  }
+
   const handleCheckAnswer = () => {
-    if (exercises.length === 0 || isAnswered) return
+    if (isAnswered || selectedTokens.length === 0) return
+
     const currentEx = exercises[currentIndex]
     const isZh = isChineseText(currentEx.targetSentence)
 
@@ -194,10 +253,19 @@ export default function GrammarPage({
     }
   }
 
-  const handleRestart = () => {
-    setCurrentIndex(0)
-    setScoreCount(0)
-    setIsCompleted(false)
+  const totalBatches = Math.ceil(allCards.length / BATCH_SIZE)
+
+  const handleNextBatch = () => {
+    if (currentBatchIndex < totalBatches - 1) {
+      const nextBatch = currentBatchIndex + 1
+      setCurrentBatchIndex(nextBatch)
+      setIsAllMode(false)
+      loadBatchExercises(allCards, nextBatch, false)
+    }
+  }
+
+  const handleRestartCurrentBatch = () => {
+    loadBatchExercises(allCards, currentBatchIndex, isAllMode)
   }
 
   if (loading) {
@@ -209,7 +277,7 @@ export default function GrammarPage({
     )
   }
 
-  if (!set || exercises.length === 0) {
+  if (!set || allCards.length === 0) {
     return (
       <div className="container max-w-xl mx-auto py-16 px-4 text-center space-y-4">
         <BookMarked className="size-12 text-muted-foreground mx-auto" />
@@ -229,6 +297,7 @@ export default function GrammarPage({
   // =========================================================================
   if (isCompleted) {
     const accuracyPercent = Math.round((scoreCount / exercises.length) * 100)
+    const hasNextBatch = !isAllMode && currentBatchIndex < totalBatches - 1
 
     return (
       <div className="container max-w-2xl mx-auto py-10 px-4 space-y-6 animate-in fade-in duration-300">
@@ -239,7 +308,7 @@ export default function GrammarPage({
 
           <div className="space-y-2">
             <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">
-              Hoàn thành Luyện cấu trúc câu!
+              Hoàn thành chặng luyện ngữ pháp!
             </h1>
             <p className="text-muted-foreground text-sm sm:text-base">
               Điểm chính xác:{' '}
@@ -248,22 +317,34 @@ export default function GrammarPage({
               </span>
             </p>
             <p className="text-xs text-muted-foreground">
-              Bạn đã sắp xếp đúng <span className="font-bold text-foreground">{scoreCount}</span> /{' '}
-              <span className="font-bold text-foreground">{exercises.length} câu</span>.
+              Bạn đã ghép đúng <span className="font-bold text-foreground">{scoreCount}</span> /{' '}
+              <span className="font-bold text-foreground">{exercises.length} câu</span> trong chặng này.
             </p>
           </div>
 
-          <div className="flex flex-wrap justify-center gap-3 pt-2">
+          <div className="flex flex-col sm:flex-row flex-wrap justify-center gap-3 pt-2">
+            {hasNextBatch && (
+              <Button
+                size="lg"
+                onClick={handleNextBatch}
+                className="gap-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold shadow-lg shadow-purple-500/25"
+              >
+                Tiếp tục Phần {currentBatchIndex + 2} (Từ {(currentBatchIndex + 1) * BATCH_SIZE + 1} - {Math.min((currentBatchIndex + 2) * BATCH_SIZE, allCards.length)}) <ArrowRight className="size-4" />
+              </Button>
+            )}
+
             <Button
               size="lg"
-              onClick={handleRestart}
-              className="gap-2 bg-gradient-to-r from-indigo-600 to-blue-600 text-white font-semibold shadow-lg shadow-indigo-500/25"
+              variant="outline"
+              onClick={handleRestartCurrentBatch}
+              className="gap-2"
             >
-              <RotateCcw className="size-4" /> Luyện tập lại
+              <RotateCcw className="size-4" /> Luyện lại phần này
             </Button>
+
             <Link
               href={`/sets/${setId}`}
-              className={buttonVariants({ size: 'lg', variant: 'outline' })}
+              className={buttonVariants({ size: 'lg', variant: 'ghost' })}
             >
               Quay lại học phần
             </Link>
@@ -315,7 +396,7 @@ export default function GrammarPage({
           </Button>
 
           <Badge variant="outline" className="font-mono text-xs border-indigo-500/30 text-indigo-600 dark:text-indigo-400">
-            {currentIndex + 1} / {exercises.length}
+            {currentIndex + 1} / {exercises.length} câu
           </Badge>
 
           <Button
@@ -329,6 +410,49 @@ export default function GrammarPage({
         </div>
       </div>
 
+      {/* Chặng học phần Selector (Khi bộ thẻ có nhiều hơn 20 từ) */}
+      {allCards.length > BATCH_SIZE && (
+        <div className="flex items-center justify-between gap-2 bg-muted/50 p-2 rounded-2xl border border-border/60 overflow-x-auto text-xs">
+          <span className="font-bold text-muted-foreground shrink-0 pl-1 flex items-center gap-1">
+            <Layers className="size-3.5" /> Chọn chặng ({allCards.length} từ):
+          </span>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {Array.from({ length: totalBatches }).map((_, idx) => {
+              const startNum = idx * BATCH_SIZE + 1
+              const endNum = Math.min((idx + 1) * BATCH_SIZE, allCards.length)
+              const isActive = !isAllMode && currentBatchIndex === idx
+
+              return (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => handleSelectBatch(idx)}
+                  className={`py-1 px-2.5 rounded-lg font-semibold transition ${
+                    isActive
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'bg-card text-muted-foreground hover:text-foreground border border-border/60'
+                  }`}
+                >
+                  Phần {idx + 1} ({startNum}-{endNum})
+                </button>
+              )
+            })}
+
+            <button
+              type="button"
+              onClick={handleSelectAll}
+              className={`py-1 px-2.5 rounded-lg font-semibold transition ${
+                isAllMode
+                  ? 'bg-purple-600 text-white shadow-xs'
+                  : 'bg-card text-muted-foreground hover:text-foreground border border-border/60'
+              }`}
+            >
+              Toàn bộ ({allCards.length} từ)
+            </button>
+          </div>
+        </div>
+      )}
+
       {aiError && (
         <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs flex items-center justify-between">
           <span>⚠️ {aiError}</span>
@@ -338,142 +462,148 @@ export default function GrammarPage({
 
       <Progress value={progressPercent} className="h-2" />
 
-      {/* Main Grammar Card */}
-      <Card className="border-border/80 shadow-2xl overflow-hidden bg-card/90 backdrop-blur-md">
-        <CardContent className="p-6 sm:p-10 space-y-8 min-h-[420px] flex flex-col justify-between">
-          
-          {/* Question Title & Translation */}
-          <div className="text-center space-y-2">
-            <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-              {currentEx.title}
-            </span>
-            <h2 className="text-lg sm:text-xl font-bold text-foreground">
-              {currentEx.translation}
-            </h2>
-            <p className="text-xs text-muted-foreground italic">
-              💡 {currentEx.hint}
-            </p>
-          </div>
-
-          {/* User Sentence Construction Drop Area */}
-          <div className="min-h-[100px] p-4 sm:p-6 rounded-2xl bg-muted/40 border-2 border-dashed border-indigo-500/30 flex flex-wrap items-center justify-center gap-2">
-            {selectedTokens.length === 0 ? (
-              <span className="text-sm text-muted-foreground/60 italic font-medium">
-                Chạm vào các từ bên dưới để ghép thành câu hoàn chỉnh...
-              </span>
-            ) : (
-              selectedTokens.map((token, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  disabled={isAnswered}
-                  onClick={() => handleRemoveToken(idx)}
-                  className="px-4 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-base shadow-md hover:bg-indigo-700 active:scale-95 transition-all flex items-center gap-1.5 animate-in zoom-in-90"
-                  title="Chạm để gỡ từ này"
-                >
-                  <span>{token}</span>
-                </button>
-              ))
-            )}
-          </div>
-
-          {/* Available Word Chips Area */}
-          <div className="space-y-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground block text-center">
-              Kho từ vựng (Chạm để chọn):
-            </span>
-
-            <div className="flex flex-wrap items-center justify-center gap-2.5 min-h-[60px]">
-              {availableTokens.map((tokenObj) => (
-                <button
-                  key={tokenObj.id}
-                  type="button"
-                  disabled={isAnswered}
-                  onClick={() => handlePickToken(tokenObj)}
-                  className="px-4 py-2.5 rounded-xl border border-border bg-card hover:bg-indigo-500/10 hover:border-indigo-500/40 text-foreground font-semibold text-base shadow-xs active:scale-95 transition-all"
-                >
-                  {tokenObj.word}
-                </button>
-              ))}
+      {/* Main Grammar Unscramble Challenge Card */}
+      {currentEx && (
+        <Card className="border-border/80 shadow-2xl overflow-hidden bg-card/90 backdrop-blur-md">
+          <CardHeader className="text-center pb-2 pt-6">
+            <div className="flex items-center justify-center gap-2 mb-1">
+              <Badge variant="secondary" className="text-[11px] font-semibold">
+                {currentEx.title}
+              </Badge>
             </div>
-          </div>
+            <CardTitle className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">
+              {currentEx.translation}
+            </CardTitle>
+            {currentEx.hint && (
+              <p className="text-xs text-muted-foreground flex items-center justify-center gap-1.5 pt-1">
+                <HelpCircle className="size-3.5 text-amber-500" />
+                {currentEx.hint}
+              </p>
+            )}
+          </CardHeader>
 
-          {/* Result Feedback & Actions */}
-          {isAnswered ? (
-            <div
-              className={`p-4 rounded-2xl border text-left space-y-2 animate-in fade-in zoom-in-95 ${
-                isCorrect
-                  ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-700 dark:text-emerald-300'
-                  : 'bg-destructive/10 border-destructive/40 text-destructive'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-sm flex items-center gap-1.5">
+          <CardContent className="p-6 sm:p-8 space-y-6 flex flex-col items-center">
+            {/* Selected Tokens Drop Arena */}
+            <div className="w-full min-h-[90px] p-4 rounded-2xl border-2 border-dashed border-indigo-500/40 bg-indigo-500/5 flex flex-wrap items-center justify-center gap-2 transition-all">
+              {selectedTokens.length === 0 ? (
+                <p className="text-xs text-muted-foreground italic select-none">
+                  Chạm vào các từ bên dưới để ghép thành câu hoàn chỉnh...
+                </p>
+              ) : (
+                selectedTokens.map((word, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => handleRemoveWordToken(idx)}
+                    disabled={isAnswered}
+                    className="py-2 px-3.5 rounded-xl bg-indigo-600 text-white font-bold text-base sm:text-lg shadow-md hover:bg-rose-600 transition-all cursor-pointer animate-in zoom-in-95"
+                    title="Chạm để bỏ từ này"
+                  >
+                    {word}
+                  </button>
+                ))
+              )}
+            </div>
+
+            {/* Available Tokens Selection Box */}
+            <div className="w-full space-y-2">
+              <div className="flex items-center justify-between text-xs text-muted-foreground font-semibold px-1">
+                <span>Kho từ vựng:</span>
+                {selectedTokens.length > 0 && !isAnswered && (
+                  <button
+                    type="button"
+                    onClick={handleResetTokens}
+                    className="text-indigo-600 hover:underline flex items-center gap-1"
+                  >
+                    <RotateCcw className="size-3" /> Xếp lại từ đầu
+                  </button>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center justify-center gap-2.5 min-h-[60px] p-4 rounded-2xl bg-muted/40 border border-border/60">
+                {availableTokens.map((token) => (
+                  <button
+                    key={token.id}
+                    type="button"
+                    onClick={() => handleSelectWordToken(token)}
+                    disabled={isAnswered}
+                    className="py-2 px-4 rounded-xl bg-card border-2 border-border/80 hover:border-indigo-500 hover:bg-indigo-500/10 font-bold text-base sm:text-lg shadow-xs hover:scale-105 transition-all active:scale-95 cursor-pointer"
+                  >
+                    {token.word}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Answer Result Banner */}
+            {isAnswered && (
+              <div
+                className={`w-full p-4 rounded-2xl border text-sm flex items-center justify-between animate-in fade-in zoom-in-95 ${
+                  isCorrect
+                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300'
+                    : 'bg-rose-500/10 border-rose-500/30 text-rose-700 dark:text-rose-300'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
                   {isCorrect ? (
-                    <>
-                      <CheckCircle2 className="size-5 text-emerald-600 dark:text-emerald-400" />
-                      Chính xác hoàn hảo!
-                    </>
+                    <CheckCircle2 className="size-6 text-emerald-600 shrink-0" />
                   ) : (
-                    <>
-                      <XCircle className="size-5 text-destructive" />
-                      Trật tự câu chưa chính xác!
-                    </>
+                    <XCircle className="size-6 text-rose-600 shrink-0" />
                   )}
-                </span>
+                  <div>
+                    <p className="font-bold">
+                      {isCorrect ? '🎉 Chính xác! Cấu trúc câu rất chuẩn!' : 'Chưa chính xác!'}
+                    </p>
+                    <p className="text-xs font-semibold mt-0.5">
+                      Đáp án đúng: <span className="underline">{currentEx.targetSentence}</span>
+                    </p>
+                  </div>
+                </div>
 
                 <Button
                   type="button"
-                  variant="ghost"
                   size="sm"
+                  variant="ghost"
                   onClick={() => speakMultilingualText(currentEx.targetSentence)}
-                  className="gap-1 text-xs"
+                  className="gap-1 text-xs shrink-0"
                 >
-                  <Volume2 className="size-3.5" /> Nghe câu chuẩn
+                  <Volume2 className="size-4" /> Nghe
                 </Button>
               </div>
+            )}
 
-              {!isCorrect && (
-                <div className="pt-2 border-t border-border/40 text-xs text-foreground">
-                  <span className="text-muted-foreground block mb-0.5">Đáp án câu chuẩn:</span>
-                  <span className="font-bold text-indigo-600 dark:text-indigo-400 text-sm">
-                    {currentEx.targetSentence}
-                  </span>
-                </div>
+            {/* Submit & Next Button */}
+            <div className="w-full max-w-sm pt-2">
+              {!isAnswered ? (
+                <Button
+                  type="button"
+                  onClick={handleCheckAnswer}
+                  disabled={selectedTokens.length === 0}
+                  className="w-full h-12 rounded-2xl bg-gradient-to-r from-indigo-600 to-blue-600 text-white font-bold text-base shadow-lg shadow-indigo-500/25 hover:scale-[1.02] transition-all"
+                >
+                  Kiểm tra câu
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  onClick={handleNextQuestion}
+                  className="w-full h-12 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold text-base shadow-lg shadow-indigo-500/25 hover:scale-[1.02] transition-all gap-2"
+                >
+                  {currentIndex < exercises.length - 1 ? (
+                    <>
+                      Câu tiếp theo <ArrowRight className="size-4" />
+                    </>
+                  ) : (
+                    <>
+                      Xem kết quả <Trophy className="size-4" />
+                    </>
+                  )}
+                </Button>
               )}
             </div>
-          ) : (
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  setSelectedTokens([])
-                  setAvailableTokens(
-                    currentEx.scrambledWords.map((w, idx) => ({
-                      id: `${w}_${idx}_${Math.random()}`,
-                      word: w,
-                    }))
-                  )
-                }}
-                disabled={selectedTokens.length === 0}
-                className="w-1/3 h-12 text-sm font-semibold rounded-xl"
-              >
-                Đặt lại
-              </Button>
-              <Button
-                type="button"
-                onClick={handleCheckAnswer}
-                disabled={selectedTokens.length === 0}
-                className="w-2/3 h-12 text-base font-semibold bg-gradient-to-r from-indigo-600 to-blue-600 text-white shadow-lg shadow-indigo-500/25 rounded-xl"
-              >
-                Kiểm tra trật tự câu
-              </Button>
-            </div>
-          )}
-
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }
