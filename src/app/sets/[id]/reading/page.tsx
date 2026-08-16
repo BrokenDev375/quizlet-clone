@@ -6,10 +6,11 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { FlashcardSet, Card as CardType } from '@/types/database.types'
 import {
-  generateReadingFromCards,
+  generateMultipleReadingPassages,
   ReadingPassage,
 } from '@/lib/quiz/advanced-skills'
 import { speakMultilingualText } from '@/lib/quiz/sentence-templates'
+import { playSuccessChime, playRetryBeep } from '@/lib/quiz/speech-recognition'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -23,6 +24,10 @@ import {
   CheckCircle2,
   XCircle,
   HelpCircle,
+  BookMarked,
+  RotateCcw,
+  Trophy,
+  Layers,
 } from 'lucide-react'
 
 export default function ReadingPage({
@@ -35,7 +40,9 @@ export default function ReadingPage({
 
   const [set, setSet] = useState<FlashcardSet | null>(null)
   const [cards, setCards] = useState<(CardType & { phonetic?: string; example_sentence?: string })[]>([])
-  const [passage, setPassage] = useState<ReadingPassage | null>(null)
+  const [passages, setPassages] = useState<ReadingPassage[]>([])
+  const [currentPassageIdx, setCurrentPassageIdx] = useState(0)
+
   const [selectedWord, setSelectedWord] = useState<{
     term: string
     phonetic?: string
@@ -71,8 +78,8 @@ export default function ReadingPage({
 
       if (cardsData && cardsData.length > 0) {
         setCards(cardsData)
-        const genPassage = generateReadingFromCards(cardsData, setData.title)
-        setPassage(genPassage)
+        const genPassages = generateMultipleReadingPassages(cardsData, setData.title)
+        setPassages(genPassages)
       }
 
       setLoading(false)
@@ -80,6 +87,16 @@ export default function ReadingPage({
 
     loadData()
   }, [setId])
+
+  const currentPassage = passages[currentPassageIdx]
+
+  const handleSwitchPassage = (idx: number) => {
+    setCurrentPassageIdx(idx)
+    setSelectedWord(null)
+    setShowTranslation(false)
+    setSelectedAnswers({})
+    setQuizSubmitted(false)
+  }
 
   const handleWordClick = (wordObj: { term: string; phonetic?: string; definition: string }) => {
     setSelectedWord(wordObj)
@@ -95,19 +112,34 @@ export default function ReadingPage({
   }
 
   const handleSubmitQuiz = () => {
+    if (!currentPassage) return
     setQuizSubmitted(true)
+
+    // Kiểm tra số câu đúng
+    let correctCount = 0
+    currentPassage.questions.forEach((q) => {
+      if (selectedAnswers[q.id] === q.correctIndex) {
+        correctCount++
+      }
+    })
+
+    if (correctCount === currentPassage.questions.length) {
+      playSuccessChime()
+    } else {
+      playRetryBeep()
+    }
   }
 
   if (loading) {
     return (
       <div className="min-h-[60vh] flex flex-col items-center justify-center space-y-4">
         <div className="size-12 rounded-full border-4 border-indigo-600 border-t-transparent animate-spin" />
-        <p className="text-muted-foreground text-sm font-medium">Đang chuẩn bị bài Đọc hiểu...</p>
+        <p className="text-muted-foreground text-sm font-medium">Đang chuẩn bị kho bài Đọc hiểu phong phú...</p>
       </div>
     )
   }
 
-  if (!set || !passage) {
+  if (!set || passages.length === 0 || !currentPassage) {
     return (
       <div className="container max-w-xl mx-auto py-16 px-4 text-center space-y-4">
         <BookOpenText className="size-12 text-muted-foreground mx-auto" />
@@ -122,10 +154,14 @@ export default function ReadingPage({
     )
   }
 
+  const correctAnswersCount = currentPassage.questions.filter(
+    (q) => selectedAnswers[q.id] === q.correctIndex
+  ).length
+
   return (
     <div className="container max-w-3xl mx-auto py-6 px-4 space-y-8">
       {/* Top Header */}
-      <div className="flex items-center justify-between gap-4 border-b border-border/80 pb-4">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-border/80 pb-4">
         <div className="flex items-center gap-3">
           <Link
             href={`/sets/${setId}`}
@@ -139,41 +175,87 @@ export default function ReadingPage({
           </Link>
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Đọc hiểu ngữ cảnh</h1>
-            <p className="text-xs text-muted-foreground">Học phần: {set.title}</p>
+            <p className="text-xs text-muted-foreground">Học phần: {set.title} ({passages.length} bài đọc chủ đề)</p>
           </div>
         </div>
 
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setShowTranslation(!showTranslation)}
-          className="text-xs gap-1.5"
-        >
-          {showTranslation ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
-          {showTranslation ? 'Ẩn dịch nghĩa' : 'Dịch toàn bài'}
-        </Button>
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowTranslation(!showTranslation)}
+            className="text-xs gap-1.5 flex-1 sm:flex-initial"
+          >
+            {showTranslation ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+            {showTranslation ? 'Ẩn bản dịch' : 'Dịch toàn bài'}
+          </Button>
+
+          <Button
+            size="sm"
+            onClick={() => speakMultilingualText(currentPassage.content)}
+            className="text-xs gap-1.5 bg-gradient-to-r from-indigo-600 to-blue-600 text-white font-medium shadow-md shadow-indigo-500/20 flex-1 sm:flex-initial"
+          >
+            <Volume2 className="size-3.5" /> Nghe bài đọc
+          </Button>
+        </div>
       </div>
 
-      {/* Reading Passage Card */}
+      {/* Multi-Passage Selector Tabs */}
+      {passages.length > 1 && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span className="font-semibold uppercase tracking-wider flex items-center gap-1">
+              <Layers className="size-3.5" /> Chọn bài đọc chủ đề:
+            </span>
+            <span>{currentPassageIdx + 1} / {passages.length} bài</span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {passages.map((p, idx) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => handleSwitchPassage(idx)}
+                className={`p-3 rounded-xl border text-left transition-all duration-200 ${
+                  currentPassageIdx === idx
+                    ? 'border-indigo-600 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-bold ring-2 ring-indigo-500/20 shadow-xs'
+                    : 'border-border bg-card hover:bg-muted/60 text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <div className="text-xs font-bold uppercase truncate">{p.genre}</div>
+                <div className="text-sm font-medium truncate text-foreground">Bài {idx + 1}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Main Reading Passage Card */}
       <Card className="border-border shadow-xl bg-card">
         <CardHeader className="bg-muted/30 border-b border-border/60 pb-4">
           <div className="flex items-center justify-between">
-            <CardTitle className="text-xl font-bold">{passage.title}</CardTitle>
+            <div className="space-y-1">
+              <Badge variant="outline" className="text-xs font-semibold border-indigo-500/30 text-indigo-600 dark:text-indigo-400">
+                {currentPassage.genre}
+              </Badge>
+              <CardTitle className="text-xl font-bold">{currentPassage.title}</CardTitle>
+            </div>
+
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => speakMultilingualText(passage.content)}
+              onClick={() => speakMultilingualText(currentPassage.content)}
               className="gap-1.5 text-xs text-indigo-600 dark:text-indigo-400 font-semibold"
             >
-              <Volume2 className="size-4" /> Nghe bài đọc
+              <Volume2 className="size-4" /> Phát âm
             </Button>
           </div>
         </CardHeader>
 
         <CardContent className="p-6 sm:p-8 space-y-6">
           {/* Main Passage Text */}
-          <div className="text-lg sm:text-xl font-medium text-foreground leading-relaxed">
-            {passage.content}
+          <div className="text-lg sm:text-xl font-medium text-foreground leading-loose">
+            {currentPassage.content}
           </div>
 
           {showTranslation && (
@@ -181,25 +263,25 @@ export default function ReadingPage({
               <span className="font-bold text-foreground block text-xs mb-1 uppercase tracking-wider">
                 Bản dịch tiếng Việt:
               </span>
-              {passage.translation}
+              {currentPassage.translation}
             </div>
           )}
 
           {/* Quick Target Vocabulary Inspector Bar */}
           <div className="space-y-2 pt-2 border-t border-border/60">
             <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground block">
-              Từ vựng trọng tâm trong bài (Bấm để tra nghĩa & nghe phát âm):
+              Từ vựng trọng tâm trong bài (Chạm vào từ để tra nghĩa & nghe phát âm):
             </span>
 
             <div className="flex flex-wrap gap-2">
-              {passage.targetWords.map((wordObj) => {
+              {currentPassage.targetWords.map((wordObj) => {
                 const isSelected = selectedWord?.term === wordObj.term
                 return (
                   <button
                     key={wordObj.term}
                     type="button"
                     onClick={() => handleWordClick(wordObj)}
-                    className={`px-3 py-1.5 rounded-xl border text-sm font-semibold transition-all duration-200 flex items-center gap-1.5 ${
+                    className={`px-3.5 py-2 rounded-xl border text-sm font-semibold transition-all duration-200 flex items-center gap-1.5 ${
                       isSelected
                         ? 'bg-indigo-600 text-white border-indigo-600 shadow-md ring-2 ring-indigo-500/30'
                         : 'bg-indigo-500/5 hover:bg-indigo-500/10 border-indigo-500/20 text-indigo-600 dark:text-indigo-400'
@@ -244,21 +326,29 @@ export default function ReadingPage({
       </Card>
 
       {/* Comprehension Quiz Section */}
-      <div className="space-y-4">
-        <h2 className="text-xl font-bold flex items-center gap-2">
-          <HelpCircle className="size-5 text-indigo-600" />
-          Câu hỏi kiểm tra độ hiểu bài ({passage.questions.length} câu)
-        </h2>
+      <div className="space-y-5">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <h2 className="text-xl font-bold flex items-center gap-2">
+            <HelpCircle className="size-5 text-indigo-600" />
+            Bộ câu hỏi đọc hiểu ({currentPassage.questions.length} câu)
+          </h2>
+
+          {quizSubmitted && (
+            <Badge className="text-xs font-bold bg-indigo-600 text-white">
+              Đúng: {correctAnswersCount} / {currentPassage.questions.length} câu
+            </Badge>
+          )}
+        </div>
 
         <div className="space-y-4">
-          {passage.questions.map((q, qIdx) => {
+          {currentPassage.questions.map((q, qIdx) => {
             const userChoice = selectedAnswers[q.id]
             const isCorrect = userChoice === q.correctIndex
 
             return (
               <Card key={q.id} className="border-border bg-card">
-                <CardContent className="p-5 space-y-4">
-                  <p className="font-bold text-base text-foreground">
+                <CardContent className="p-5 sm:p-6 space-y-4">
+                  <p className="font-bold text-base text-foreground leading-snug">
                     Câu {qIdx + 1}: {q.question}
                   </p>
 
@@ -283,7 +373,7 @@ export default function ReadingPage({
                           type="button"
                           disabled={quizSubmitted}
                           onClick={() => handleSelectOption(q.id, optIdx)}
-                          className={`p-3 rounded-xl border text-left text-sm transition-all duration-200 ${btnStyle}`}
+                          className={`p-3.5 rounded-xl border text-left text-sm transition-all duration-200 leading-snug ${btnStyle}`}
                         >
                           {opt}
                         </button>
@@ -293,13 +383,13 @@ export default function ReadingPage({
 
                   {quizSubmitted && (
                     <div
-                      className={`p-3 rounded-xl border text-xs ${
+                      className={`p-3.5 rounded-xl border text-xs leading-relaxed ${
                         isCorrect
                           ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300'
                           : 'bg-destructive/10 border-destructive/30 text-destructive'
                       }`}
                     >
-                      <span className="font-bold block mb-0.5">
+                      <span className="font-bold block mb-1">
                         {isCorrect ? '✅ Chính xác!' : '❌ Chưa đúng!'}
                       </span>
                       {q.explanation}
@@ -315,23 +405,35 @@ export default function ReadingPage({
           <Button
             size="lg"
             onClick={handleSubmitQuiz}
-            disabled={Object.keys(selectedAnswers).length < passage.questions.length}
+            disabled={Object.keys(selectedAnswers).length < currentPassage.questions.length}
             className="w-full h-12 text-base font-semibold bg-gradient-to-r from-indigo-600 to-blue-600 text-white shadow-xl shadow-indigo-500/25"
           >
-            Nộp câu trả lời Đọc hiểu
+            Nộp câu trả lời Đọc hiểu ({Object.keys(selectedAnswers).length}/{currentPassage.questions.length} câu)
           </Button>
         ) : (
-          <Button
-            variant="outline"
-            size="lg"
-            onClick={() => {
-              setQuizSubmitted(false)
-              setSelectedAnswers({})
-            }}
-            className="w-full"
-          >
-            Làm lại bài đọc
-          </Button>
+          <div className="flex gap-3">
+            <Button
+              variant="outline"
+              size="lg"
+              onClick={() => {
+                setQuizSubmitted(false)
+                setSelectedAnswers({})
+              }}
+              className="flex-1 gap-2"
+            >
+              <RotateCcw className="size-4" /> Làm lại bài này
+            </Button>
+
+            {currentPassageIdx < passages.length - 1 && (
+              <Button
+                size="lg"
+                onClick={() => handleSwitchPassage(currentPassageIdx + 1)}
+                className="flex-1 bg-indigo-600 text-white hover:bg-indigo-700 font-semibold"
+              >
+                Chuyển sang Bài {currentPassageIdx + 2} →
+              </Button>
+            )}
+          </div>
         )}
       </div>
     </div>
