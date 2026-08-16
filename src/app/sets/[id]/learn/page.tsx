@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { FlashcardSet, Card as CardType } from '@/types/database.types'
+import { unpackCardContent } from '@/lib/quiz/card-serialization'
 import {
   QuizQuestion,
   CardProgressState,
@@ -88,11 +89,12 @@ export default function LearnModePage({
         .eq('set_id', setId)
 
       if (cardsData && cardsData.length > 0) {
-        setAllCards(cardsData)
+        const unpacked = cardsData.map(unpackCardContent)
+        setAllCards(unpacked)
 
         // Khởi tạo Progress Map cho từng thẻ
         const initialMap: Record<string, CardProgressState> = {}
-        cardsData.forEach((c) => {
+        unpacked.forEach((c) => {
           initialMap[c.id] = {
             cardId: c.id,
             level: 'new',

@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { FlashcardSet, Card as CardType } from '@/types/database.types'
+import { unpackCardContent } from '@/lib/quiz/card-serialization'
 import { checkWrittenAnswer, normalizeAnswer } from '@/lib/quiz/question-generator'
 import { isChineseText, speakMultilingualText } from '@/lib/quiz/sentence-templates'
 import { playSuccessChime, playRetryBeep } from '@/lib/quiz/speech-recognition'
@@ -77,7 +78,7 @@ export default function DictationModePage({
         .order('position', { ascending: true })
 
       if (cardsData && cardsData.length > 0) {
-        setCards(cardsData)
+        setCards(cardsData.map(unpackCardContent))
       }
 
       setLoading(false)

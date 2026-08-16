@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { FlashcardSet, Card as CardType } from '@/types/database.types'
+import { unpackCardContent } from '@/lib/quiz/card-serialization'
 import {
   generateDialogueFromCards,
   DialogueLine,
@@ -65,8 +66,9 @@ export default function DialoguePage({
         .order('position', { ascending: true })
 
       if (cardsData && cardsData.length > 0) {
-        setCards(cardsData)
-        const lines = generateDialogueFromCards(cardsData)
+        const unpacked = cardsData.map(unpackCardContent)
+        setCards(unpacked)
+        const lines = generateDialogueFromCards(unpacked)
         setDialogueLines(lines)
       }
 

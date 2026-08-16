@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { FlashcardSet, Card as CardType } from '@/types/database.types'
+import { unpackCardContent } from '@/lib/quiz/card-serialization'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
@@ -78,7 +79,7 @@ export default function SetDetailPage({ params }: { params: Promise<{ id: string
         .order('position', { ascending: true })
 
       if (cardsData) {
-        setCards(cardsData)
+        setCards(cardsData.map(unpackCardContent))
       }
 
       setLoading(false)

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent } from '@/components/ui/card'
+import { packCardDefinition } from '@/lib/quiz/card-serialization'
 import { 
   Plus, 
   Trash2, 
@@ -211,9 +212,15 @@ export default function NewSetPage() {
         .from('cards')
         .insert(cardPayload)
 
-      if (cardsError && (cardsError.message?.includes('phonetic') || cardsError.message?.includes('example_sentence'))) {
-        const fallbackCards = cardPayload.map(({ phonetic, example_sentence, ...rest }) => rest)
-        const fallbackRes = await supabase.from('cards').insert(fallbackCards)
+      if (cardsError) {
+        console.warn('Direct column insert failed, using packed definition fallback:', cardsError.message)
+        const packedCards = validCards.map((c, idx) => ({
+          set_id: setData.id,
+          term: c.term.trim(),
+          definition: packCardDefinition(c.definition, c.phonetic, c.example_sentence),
+          position: idx,
+        }))
+        const fallbackRes = await supabase.from('cards').insert(packedCards)
         cardsError = fallbackRes.error
       }
 

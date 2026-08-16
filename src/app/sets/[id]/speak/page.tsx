@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { FlashcardSet, Card as CardType } from '@/types/database.types'
+import { unpackCardContent } from '@/lib/quiz/card-serialization'
 import {
   scorePronunciation,
   scoreMultipleTranscripts,
@@ -79,7 +80,7 @@ export default function SpeakPracticePage({
         .order('position', { ascending: true })
 
       if (cardsData && cardsData.length > 0) {
-        setCards(cardsData)
+        setCards(cardsData.map(unpackCardContent))
       }
 
       setLoading(false)

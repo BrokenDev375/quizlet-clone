@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent } from '@/components/ui/card'
+import { unpackCardContent, packCardDefinition } from '@/lib/quiz/card-serialization'
 import { Plus, Trash2, Globe, Lock, ArrowLeft, Loader2, AlertCircle, Wand2 } from 'lucide-react'
 
 interface CardItem {
@@ -72,7 +73,7 @@ export default function EditSetPage({ params }: { params: Promise<{ id: string }
         .order('position', { ascending: true })
 
       if (cardsData) {
-        setCards(cardsData)
+        setCards(cardsData.map(unpackCardContent))
       }
 
       setInitialLoading(false)
@@ -181,9 +182,16 @@ export default function EditSetPage({ params }: { params: Promise<{ id: string }
         .from('cards')
         .insert(cardPayload)
 
-      if (insertCardsError && (insertCardsError.message?.includes('phonetic') || insertCardsError.message?.includes('example_sentence'))) {
-        const fallbackCards = cardPayload.map(({ phonetic, example_sentence, ...rest }) => rest)
-        const fallbackRes = await supabase.from('cards').insert(fallbackCards)
+      // Nếu Supabase chưa có cột phonetic / example_sentence -> Tự động đóng gói an toàn vào definition
+      if (insertCardsError) {
+        console.warn('Direct column insert failed, using packed definition fallback:', insertCardsError.message)
+        const packedCards = validCards.map((c, idx) => ({
+          set_id: setId,
+          term: c.term.trim(),
+          definition: packCardDefinition(c.definition, c.phonetic, c.example_sentence),
+          position: idx,
+        }))
+        const fallbackRes = await supabase.from('cards').insert(packedCards)
         insertCardsError = fallbackRes.error
       }
 
