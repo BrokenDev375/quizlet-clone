@@ -97,7 +97,7 @@ export default function DictationModePage({
       const currentCard = cards[currentIndex]
       // Phát âm tự động sau 300ms
       const timer = setTimeout(() => {
-        handlePlayAudio(currentCard.term, 1.0)
+        handlePlayAudio(currentCard.term)
         inputRef.current?.focus()
       }, 300)
 
@@ -105,20 +105,8 @@ export default function DictationModePage({
     }
   }, [currentIndex, cards, isCompleted])
 
-  const handlePlayAudio = (text: string, speed = audioSpeed) => {
-    if (typeof window === 'undefined' || !('speechSynthesis' in window) || !text) return
-    window.speechSynthesis.cancel()
-    const utterance = new SpeechSynthesisUtterance(text.trim())
-
-    if (isChineseText(text)) {
-      utterance.lang = 'zh-CN'
-      utterance.rate = speed === 1.0 ? 0.85 : 0.6
-    } else {
-      utterance.lang = 'en-US'
-      utterance.rate = speed === 1.0 ? 0.95 : 0.7
-    }
-
-    window.speechSynthesis.speak(utterance)
+  const handlePlayAudio = (text: string) => {
+    speakMultilingualText(text)
   }
 
   const handleSubmit = (e?: React.FormEvent) => {
@@ -134,11 +122,15 @@ export default function DictationModePage({
 
     if (correct) {
       playSuccessChime()
+      speakMultilingualText(currentCard.term)
       setTimeout(() => {
         handleNextCard()
-      }, 1500)
+      }, 1800)
     } else {
       playRetryBeep()
+      setTimeout(() => {
+        speakMultilingualText(currentCard.term)
+      }, 200)
     }
   }
 
@@ -284,32 +276,35 @@ export default function DictationModePage({
           <div className="space-y-4">
             <button
               type="button"
-              onClick={() => handlePlayAudio(currentCard.term, 1.0)}
+              onClick={() => handlePlayAudio(currentCard.term)}
               className="group relative size-28 sm:size-32 rounded-full bg-gradient-to-tr from-indigo-600 via-blue-600 to-cyan-500 text-white flex items-center justify-center shadow-2xl shadow-indigo-500/40 hover:scale-105 transition-all duration-300 ring-8 ring-indigo-500/20"
               title="Bấm để nghe lại phát âm"
             >
               <Volume2 className="size-12 sm:size-14 group-hover:scale-110 transition-transform" />
             </button>
 
-            <div className="flex items-center justify-center gap-2 pt-1">
+            <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
-                onClick={() => handlePlayAudio(currentCard.term, 1.0)}
+                onClick={() => handlePlayAudio(currentCard.term)}
                 className="gap-1.5 text-xs font-semibold rounded-xl hover:bg-muted"
               >
-                <Volume2 className="size-3.5 text-indigo-600" /> Nghe chuẩn (1.0x)
+                <Volume2 className="size-3.5 text-indigo-600" /> Nghe lại từ vựng
               </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => handlePlayAudio(currentCard.term, 0.75)}
-                className="gap-1.5 text-xs font-semibold rounded-xl hover:bg-muted text-muted-foreground"
-              >
-                <Play className="size-3.5" /> Nghe chậm (0.75x)
-              </Button>
+
+              {currentCard.example_sentence && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handlePlayAudio(currentCard.example_sentence!.replace(/\[|\]/g, ''))}
+                  className="gap-1.5 text-xs font-semibold rounded-xl hover:bg-muted text-purple-600 dark:text-purple-400"
+                >
+                  <Sparkles className="size-3.5 text-purple-600" /> Nghe cả câu ví dụ
+                </Button>
+              )}
             </div>
           </div>
 
