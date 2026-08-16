@@ -326,45 +326,47 @@ export default function EditSetPage({ params }: { params: Promise<{ id: string }
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5">
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
                   {/* 1. Thuật ngữ */}
-                  <div className="space-y-1 md:col-span-4">
-                    <label className="text-xs uppercase font-semibold tracking-wider text-muted-foreground">
+                  <div className="space-y-1.5 md:col-span-4">
+                    <label className="text-xs uppercase font-semibold tracking-wider text-muted-foreground h-5 flex items-center">
                       Thuật ngữ / Từ vựng
                     </label>
                     <Input
                       placeholder="VD: 你好 hoặc Apple..."
                       value={card.term}
                       onChange={(e) => handleCardChange(index, 'term', e.target.value)}
-                      className="bg-background font-medium"
+                      className="h-10 bg-background font-medium"
                       required
                     />
                   </div>
 
                   {/* 2. Phiên âm IPA / Pinyin */}
-                  <div className="space-y-1 md:col-span-3">
-                    <label className="text-xs uppercase font-semibold tracking-wider text-muted-foreground flex items-center justify-between">
-                      <span className="text-indigo-600 dark:text-indigo-400 font-bold">Phiên âm (Pinyin/IPA)</span>
-                      <span className="text-[10px] text-muted-foreground/80 font-normal">Tự điền Pinyin</span>
+                  <div className="space-y-1.5 md:col-span-4">
+                    <label className="text-xs uppercase font-semibold tracking-wider text-indigo-600 dark:text-indigo-400 h-5 flex items-center justify-between">
+                      <span className="truncate">Phiên âm (Pinyin/IPA)</span>
+                      <span className="text-[10px] text-muted-foreground/80 font-normal lowercase shrink-0">
+                        (tự sinh)
+                      </span>
                     </label>
                     <Input
                       placeholder="VD: nǐ hǎo hoặc /ˈæp.əl/..."
                       value={card.phonetic || ''}
                       onChange={(e) => handleCardChange(index, 'phonetic', e.target.value)}
-                      className="bg-background text-indigo-600 dark:text-indigo-400 font-mono text-sm font-semibold border-indigo-500/30"
+                      className="h-10 bg-background text-indigo-600 dark:text-indigo-400 font-mono text-sm font-semibold border-indigo-500/30"
                     />
                   </div>
 
                   {/* 3. Định nghĩa */}
-                  <div className="space-y-1 md:col-span-5">
-                    <label className="text-xs uppercase font-semibold tracking-wider text-muted-foreground">
+                  <div className="space-y-1.5 md:col-span-4">
+                    <label className="text-xs uppercase font-semibold tracking-wider text-muted-foreground h-5 flex items-center">
                       Định nghĩa / Ý nghĩa
                     </label>
                     <Input
                       placeholder="VD: Xin chào hoặc Quả táo..."
                       value={card.definition}
                       onChange={(e) => handleCardChange(index, 'definition', e.target.value)}
-                      className="bg-background font-medium"
+                      className="h-10 bg-background font-medium"
                       required
                     />
                   </div>
