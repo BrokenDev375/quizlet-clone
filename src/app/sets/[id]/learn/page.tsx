@@ -13,6 +13,7 @@ import {
   checkWrittenAnswer,
 } from '@/lib/quiz/question-generator'
 import { speakMultilingualText } from '@/lib/quiz/sentence-templates'
+import { playSuccessChime, playRetryBeep } from '@/lib/quiz/speech-recognition'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
@@ -154,13 +155,19 @@ export default function LearnModePage({
     setIsCorrect(correct)
     setIsAnswered(true)
 
-    // Cập nhật streak
+    // Cập nhật streak & Âm thanh phát âm
     if (correct) {
       setStreak((s) => s + 1)
-      // Tự động phát âm thuật ngữ tiếng Anh nếu đúng
+      playSuccessChime()
+      // Tự động phát âm thuật ngữ khi trả lời đúng
       speakText(currentQ.card.term)
     } else {
       setStreak(0)
+      playRetryBeep()
+      // Tự động phát âm thuật ngữ chuẩn khi trả lời SAI để người học nghe lại và sửa sai
+      setTimeout(() => {
+        speakText(currentQ.card.term)
+      }, 300)
     }
 
     // Cập nhật State Mastery của thẻ trong Progress Map
