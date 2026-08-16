@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { FlashcardSet, Card as CardType } from '@/types/database.types'
 import {
   scorePronunciation,
+  scoreMultipleTranscripts,
   SpeechScoreResult,
   playSuccessChime,
   playRetryBeep,
@@ -102,22 +103,35 @@ export default function SpeakingModePage({
       const recognition = new SpeechRecognition()
       recognition.continuous = false
       recognition.interimResults = false
-      recognition.maxAlternatives = 1
+      recognition.maxAlternatives = 5
 
       recognition.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript
-        const confidence = event.results[0][0].confidence || 0.9
         setIsListening(false)
 
         if (cards.length > 0 && currentIndex < cards.length) {
           const currentCard = cards[currentIndex]
-          const result = scorePronunciation(transcript, currentCard.term, confidence)
+
+          // Lấy toàn bộ danh sách các ứng viên âm thanh (Top 5 Alternatives) mà máy thu được
+          const candidates: { transcript: string; confidence: number }[] = []
+          const resultsList = event.results[0]
+
+          if (resultsList) {
+            for (let i = 0; i < resultsList.length; i++) {
+              if (resultsList[i]?.transcript) {
+                candidates.push({
+                  transcript: resultsList[i].transcript,
+                  confidence: resultsList[i].confidence || 0.9,
+                })
+              }
+            }
+          }
+
+          const result = scoreMultipleTranscripts(candidates, currentCard.term)
           setScoreResult(result)
           setResultsHistory((prev) => ({ ...prev, [currentCard.id]: result }))
 
           if (result.isPassed) {
             playSuccessChime()
-            // Tự động chuyển câu sau 2 giây nếu đạt điểm
             setTimeout(() => {
               handleNextCard()
             }, 1800)

@@ -4,13 +4,41 @@ import { normalizeAnswer } from './question-generator'
 
 export interface SpeechScoreResult {
   score: number // 0 to 100
-  isPassed: boolean // >= 75%
+  isPassed: boolean // >= 70%
   transcript: string
   feedbackMessage: string
   wordFeedback: {
     word: string
     isCorrect: boolean
   }[]
+}
+
+/**
+ * Tách các biến thể có thể có của thuật ngữ
+ * Ví dụ: "take off / remove (v)" -> ["take off", "remove", "take off remove"]
+ */
+export function extractTargetVariants(targetTerm: string): string[] {
+  // 1. Loại bỏ ngoặc đơn, ngoặc vuông: "(v)", "[noun]", "(adj)"
+  const cleanBase = targetTerm
+    .replace(/\([^)]*\)/g, '')
+    .replace(/\[[^\]]*\]/g, '')
+    .replace(/\{[^}]*\}/g, '')
+    .trim()
+
+  const variants = new Set<string>()
+
+  if (cleanBase) {
+    variants.add(cleanBase)
+
+    // 2. Tách theo dấu gạch chéo '/', dấu phẩy ',', dấu chấm phẩy ';'
+    const parts = cleanBase.split(/[\/,;]/).map((p) => p.trim()).filter(Boolean)
+    parts.forEach((p) => variants.add(p))
+  }
+
+  // Luôn thêm từ gốc
+  variants.add(targetTerm.trim())
+
+  return Array.from(variants)
 }
 
 /**
@@ -45,25 +73,30 @@ export function calculateLevenshteinDistance(a: string, b: string): number {
 }
 
 /**
- * Tính độ tương đồng giữa 2 chuỗi từ 0% đến 100%
+ * Tính độ tương đồng giữa 2 chuỗi từ 0% đến 100% (có hỗ trợ Substring & Lenient matching)
  */
-export function calculateStringSimilarity(str1: string, str2: string): number {
-  const norm1 = normalizeAnswer(str1)
-  const norm2 = normalizeAnswer(str2)
+export function calculateStringSimilarity(spoken: string, target: string): number {
+  const normSpoken = normalizeAnswer(spoken)
+  const normTarget = normalizeAnswer(target)
 
-  if (!norm1 || !norm2) return 0
-  if (norm1 === norm2) return 100
+  if (!normSpoken || !normTarget) return 0
+  if (normSpoken === normTarget) return 100
 
-  const maxLen = Math.max(norm1.length, norm2.length)
+  // Nếu người dùng nói có chứa từ mục tiêu (VD: nói "an apple" mà từ là "apple") -> 100%
+  if (normSpoken.includes(normTarget) || normTarget.includes(normSpoken)) {
+    return 100
+  }
+
+  const maxLen = Math.max(normSpoken.length, normTarget.length)
   if (maxLen === 0) return 100
 
-  const distance = calculateLevenshteinDistance(norm1, norm2)
+  const distance = calculateLevenshteinDistance(normSpoken, normTarget)
   const similarity = Math.max(0, 1 - distance / maxLen)
   return Math.round(similarity * 100)
 }
 
 /**
- * Thuật toán chấm điểm phát âm toàn diện (Hỗ trợ tiếng Anh & tiếng Trung)
+ * Thuật toán chấm điểm phát âm toàn diện siêu nhạy (Hỗ trợ tiếng Anh & tiếng Trung)
  */
 export function scorePronunciation(
   spokenText: string,
@@ -71,63 +104,89 @@ export function scorePronunciation(
   engineConfidence = 0.9
 ): SpeechScoreResult {
   const cleanSpoken = spokenText.trim()
-  const cleanTarget = targetTerm.trim()
-  const isZh = isChineseText(cleanTarget)
+  const variants = extractTargetVariants(targetTerm)
+  const isZh = isChineseText(targetTerm)
 
-  let baseScore = 0
+  let bestScore = 0
+  let bestVariant = variants[0] || targetTerm
+
+  // Thử so khớp với tất cả các biến thể của từ (ví dụ bỏ ngoặc (v), tách dấu /)
+  for (const variant of variants) {
+    let currentScore = 0
+
+    if (isZh) {
+      // Tiếng Trung: So sánh cả Hán tự lẫn Pinyin (bỏ dấu thanh điệu để tránh sai lệch máy nhận âm)
+      const spokenPinyin = pinyin(cleanSpoken, { toneType: 'none' }).toLowerCase().replace(/[^a-z0-9]/g, '')
+      const targetPinyin = pinyin(variant, { toneType: 'none' }).toLowerCase().replace(/[^a-z0-9]/g, '')
+
+      const hanziScore = calculateStringSimilarity(cleanSpoken, variant)
+      const pinyinScore = calculateStringSimilarity(spokenPinyin, targetPinyin)
+
+      // Nếu pinyin trùng nhau (VD: máy nhận âm lệch chữ nhưng cùng âm đọc) -> Điểm tối đa
+      if (spokenPinyin === targetPinyin || spokenPinyin.includes(targetPinyin) || targetPinyin.includes(spokenPinyin)) {
+        currentScore = 100
+      } else {
+        currentScore = Math.max(hanziScore, pinyinScore)
+      }
+    } else {
+      // Tiếng Anh: So khớp từ vựng
+      currentScore = calculateStringSimilarity(cleanSpoken, variant)
+    }
+
+    if (currentScore > bestScore) {
+      bestScore = currentScore
+      bestVariant = variant
+    }
+  }
+
+  // Đánh giá từng từ thành phần để tô màu
   let wordFeedback: { word: string; isCorrect: boolean }[] = []
-
   if (isZh) {
-    // Chấm điểm cho tiếng Trung (so khớp cả chữ Hán lẫn Pinyin)
-    const spokenPinyin = pinyin(cleanSpoken, { toneType: 'none' }).toLowerCase().replace(/\s+/g, '')
-    const targetPinyin = pinyin(cleanTarget, { toneType: 'none' }).toLowerCase().replace(/\s+/g, '')
+    const targetChars = bestVariant.split('')
+    const spokenPinyin = pinyin(cleanSpoken, { toneType: 'none' }).toLowerCase()
 
-    const hanziScore = calculateStringSimilarity(cleanSpoken, cleanTarget)
-    const pinyinScore = calculateStringSimilarity(spokenPinyin, targetPinyin)
-
-    baseScore = Math.max(hanziScore, pinyinScore)
-
-    // Chia từng chữ Hán để đánh giá
-    const targetChars = cleanTarget.split('')
     wordFeedback = targetChars.map((char) => {
-      const match = cleanSpoken.includes(char) || spokenPinyin.includes(pinyin(char, { toneType: 'none' }).toLowerCase())
+      const charPinyin = pinyin(char, { toneType: 'none' }).toLowerCase()
+      const isMatch = cleanSpoken.includes(char) || spokenPinyin.includes(charPinyin)
       return {
         word: char,
-        isCorrect: match,
+        isCorrect: isMatch || bestScore >= 70,
       }
     })
   } else {
-    // Chấm điểm cho tiếng Anh / chữ Latin
-    baseScore = calculateStringSimilarity(cleanSpoken, cleanTarget)
-
-    const targetWords = cleanTarget.split(/\s+/)
+    const targetWords = bestVariant.split(/\s+/).filter(Boolean)
     const spokenNorm = normalizeAnswer(cleanSpoken)
 
     wordFeedback = targetWords.map((word) => {
       const normW = normalizeAnswer(word)
-      const isMatch = spokenNorm.includes(normW) || calculateStringSimilarity(spokenNorm, normW) >= 75
+      const isMatch = spokenNorm.includes(normW) || calculateStringSimilarity(spokenNorm, normW) >= 70
       return {
         word,
-        isCorrect: isMatch,
+        isCorrect: isMatch || bestScore >= 70,
       }
     })
   }
 
-  // Kết hợp confidence của Web Speech API
-  const confidenceWeight = engineConfidence > 0 ? engineConfidence : 0.85
-  const finalScore = Math.min(100, Math.round(baseScore * 0.8 + confidenceWeight * 100 * 0.2))
+  // Kết hợp điểm số: Nếu độ khớp cao thì lấy điểm thực tế
+  const confidenceFactor = engineConfidence > 0 ? engineConfidence : 0.9
+  let finalScore = bestScore
 
-  const isPassed = finalScore >= 75
+  if (bestScore < 100) {
+    finalScore = Math.min(100, Math.round(bestScore * 0.85 + confidenceFactor * 100 * 0.15))
+  }
+
+  // Ngưỡng đạt thân thiện cho người học ngôn ngữ (>= 70%)
+  const isPassed = finalScore >= 70
 
   let feedbackMessage = 'Cần luyện tập thêm!'
-  if (finalScore >= 95) {
+  if (finalScore >= 90) {
     feedbackMessage = '🎉 Xuất sắc! Phát âm cực chuẩn!'
-  } else if (finalScore >= 85) {
+  } else if (finalScore >= 80) {
     feedbackMessage = '👍 Rất tốt! Gần như hoàn hảo!'
-  } else if (finalScore >= 75) {
+  } else if (finalScore >= 70) {
     feedbackMessage = '✨ Đạt yêu cầu! Phát âm khá chuẩn!'
   } else if (finalScore >= 50) {
-    feedbackMessage = '⚠️ Gần đúng rồi, hãy thử phát âm rõ ràng hơn nhé!'
+    feedbackMessage = '⚠️ Gần đúng rồi, hãy thử nói rõ ràng và gần micro hơn nhé!'
   }
 
   return {
@@ -140,7 +199,40 @@ export function scorePronunciation(
 }
 
 /**
- * Phát âm thanh chúc mừng bằng Web Audio API (Zero external assets needed)
+ * Đánh giá danh sách các ứng viên âm thanh (Top 5 Alternatives từ Web Speech API)
+ * Chọn ra ứng viên có điểm số cao nhất cho người học
+ */
+export function scoreMultipleTranscripts(
+  transcripts: { transcript: string; confidence: number }[],
+  targetTerm: string
+): SpeechScoreResult {
+  if (!transcripts || transcripts.length === 0) {
+    return {
+      score: 0,
+      isPassed: false,
+      transcript: '',
+      feedbackMessage: 'Không nhận được âm thanh. Hãy thử nói to hơn!',
+      wordFeedback: [],
+    }
+  }
+
+  let bestResult: SpeechScoreResult | null = null
+
+  for (const item of transcripts) {
+    const result = scorePronunciation(item.transcript, targetTerm, item.confidence)
+    if (!bestResult || result.score > bestResult.score) {
+      bestResult = result
+    }
+    if (result.isPassed && result.score >= 95) {
+      break // Đã tìm thấy ứng viên xuất sắc nhất
+    }
+  }
+
+  return bestResult || scorePronunciation(transcripts[0].transcript, targetTerm, transcripts[0].confidence)
+}
+
+/**
+ * Phát âm thanh chúc mừng bằng Web Audio API
  */
 export function playSuccessChime() {
   if (typeof window === 'undefined') return
