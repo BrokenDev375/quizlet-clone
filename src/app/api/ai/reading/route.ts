@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
     const isZh = cards.some((c: any) => isChineseText(c.term))
     const wordList = cards
       .slice(0, 10)
-      .map((c: any) => `- "${c.term}" (Phát âm: ${c.phonetic || 'N/A'}, Nghĩa: ${c.definition})`)
+      .map((c: any) => `- ${c.term} (Nghĩa: ${c.definition})`)
       .join('\n')
 
     const languageInstruction = isZh
@@ -29,15 +29,16 @@ ${wordList}
 YÊU CẦU:
 1. Hãy sáng tác MỘT BÀI ĐỌC HIỂU (Reading Passage) sinh động, tự nhiên 100%, có cốt truyện hoặc bối cảnh đời sống/công sở hấp dẫn dài khoảng 120-180 từ.
 2. BẮT BUỘC phải lồng ghép một cách tự nhiên và chính xác các từ vựng trong danh sách trên.
-3. Tạo một bản dịch nghĩa tiếng Việt chuẩn xác, mượt mà cho toàn bộ đoạn văn.
+3. Tạo một bản dịch nghĩa tiếng Việt chuẩn xác cho toàn bộ đoạn văn.
 4. Tạo 4 CÂU HỎI TRẮC NGHIỆM ĐỌC HIỂU (mỗi câu có 4 lựa chọn A, B, C, D, chỉ rõ index đúng 0-3 và lời giải thích ngắn gọn).
+5. QUY TẮC JSON: Không dùng dấu ngoặc kép " bên trong các câu hay câu hỏi (dùng dấu ngoặc đơn ' hoặc dấu 【】 để không gây lỗi JSON).
 ${languageInstruction}
 
-ĐỊNH DẠNG JSON TRẢ VỀ BẮT BUỘC:
+ĐỊNH DẠNG JSON TRẢ VỀ:
 {
   "title": "Tiêu đề bài đọc hấp dẫn",
   "genre": "Thể loại (VD: Đời sống thực tế / Công sở & Học tập / Truyện ngắn)",
-  "content": "Nội dung bài đọc bằng tiếng Anh hoặc tiếng Trung",
+  "content": "Nội dung bài đọc",
   "translation": "Bản dịch tiếng Việt toàn bài",
   "questions": [
     {

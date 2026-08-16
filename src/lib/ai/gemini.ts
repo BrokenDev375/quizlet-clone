@@ -38,7 +38,37 @@ export interface GeminiGrammarResponse {
 }
 
 /**
- * Gọi Google Gemini API với prompt có cấu trúc JSON
+ * Hàm phân tích và tự động phục hồi JSON an toàn (Chống lỗi Unterminated string / Cắt ngắn)
+ */
+export function safeParseJSON<T>(rawText: string): T {
+  let cleaned = rawText
+    .replace(/```json\s*/gi, '')
+    .replace(/```\s*$/gi, '')
+    .trim()
+
+  try {
+    return JSON.parse(cleaned) as T
+  } catch (initialErr: any) {
+    console.warn('JSON parse warning, running safe recovery:', initialErr.message)
+
+    // Thử làm sạch các dấu ngoặc kép lồng nhau hoặc ký tự điều khiển
+    try {
+      // Tìm khối JSON hợp lệ từ ký tự { đầu tiên đến ký tự } cuối cùng
+      const startIdx = cleaned.indexOf('{')
+      const endIdx = cleaned.lastIndexOf('}')
+
+      if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+        const extracted = cleaned.substring(startIdx, endIdx + 1)
+        return JSON.parse(extracted) as T
+      }
+    } catch (secondErr) {}
+
+    throw new Error('Dữ liệu JSON từ AI bị lỗi định dạng. Vui lòng bấm thử lại!')
+  }
+}
+
+/**
+ * Gọi Google Gemini API với cơ chế tự động thử lại (Retry) & chuyển đổi Model khi bị 503 High Demand
  */
 export async function callGeminiJSON<T>(prompt: string): Promise<T> {
   const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY
@@ -47,59 +77,67 @@ export async function callGeminiJSON<T>(prompt: string): Promise<T> {
     throw new Error('Chưa cấu hình GEMINI_API_KEY trong .env.local')
   }
 
-  // Chỉ sử dụng các model thế hệ mới nhất của Google Gemini
-  const models = ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash']
+  // Danh sách các model Gemini thế hệ mới để luân chuyển tự động
+  const models = ['gemini-3.7-flash', 'gemini-3.5-flash', 'gemini-flash-latest']
   let lastError: any = null
 
-  for (const model of models) {
-    try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
+  for (let attempt = 0; attempt < 2; attempt++) {
+    for (const model of models) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
 
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [{ text: prompt }],
-            },
-          ],
-          generationConfig: {
-            temperature: 0.7,
-            topP: 0.95,
-            maxOutputTokens: 2048,
-            responseMimeType: 'application/json',
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
           },
-        }),
-      })
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [{ text: prompt }],
+              },
+            ],
+            generationConfig: {
+              temperature: 0.6,
+              topP: 0.95,
+              maxOutputTokens: 8192, // Tăng tối đa để không bao giờ bị cắt cụt JSON
+              responseMimeType: 'application/json',
+            },
+          }),
+        })
 
-      if (!response.ok) {
-        const errorText = await response.text()
-        console.warn(`Gemini model ${model} failed:`, errorText)
-        lastError = new Error(`Gemini API error: ${response.status} - ${errorText}`)
-        continue
+        if (!response.ok) {
+          const status = response.status
+          const errorText = await response.text()
+          console.warn(`Gemini model ${model} returned status ${status}:`, errorText)
+
+          // Nếu gặp lỗi 503 (High Demand) hoặc 429 (Rate Limit) -> Thử model tiếp theo
+          if (status === 503 || status === 429) {
+            lastError = new Error('Máy chủ AI đang có lượng truy cập cao. Hệ thống đang chuyển model dự phòng...')
+            await new Promise((r) => setTimeout(r, 800))
+            continue
+          }
+
+          lastError = new Error(`Lỗi Gemini API (${status})`)
+          continue
+        }
+
+        const data = await response.json()
+        const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text
+
+        if (!rawText) {
+          throw new Error('Gemini không trả về nội dung hợp lệ')
+        }
+
+        return safeParseJSON<T>(rawText)
+      } catch (err: any) {
+        lastError = err
       }
-
-      const data = await response.json()
-      const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text
-
-      if (!rawText) {
-        throw new Error('Gemini không trả về nội dung hợp lệ')
-      }
-
-      // Xử lý làm sạch JSON nếu có markdown formatting
-      const cleaned = rawText
-        .replace(/```json\s*/gi, '')
-        .replace(/```\s*$/gi, '')
-        .trim()
-
-      return JSON.parse(cleaned) as T
-    } catch (err) {
-      lastError = err
     }
+
+    // Đợi 1 giây trước khi thử lại vòng 2 nếu tất cả model bị bận
+    await new Promise((r) => setTimeout(r, 1200))
   }
 
-  throw lastError || new Error('Không thể kết nối với Gemini AI')
+  throw lastError || new Error('Không thể kết nối với Gemini AI. Vui lòng bấm thử lại sau vài giây!')
 }

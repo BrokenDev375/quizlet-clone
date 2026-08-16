@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
     const isZh = cards.some((c: any) => isChineseText(c.term))
     const wordList = cards
       .slice(0, 8)
-      .map((c: any) => `- "${c.term}" (${c.definition})`)
+      .map((c: any) => `- ${c.term} (${c.definition})`)
       .join('\n')
 
     const prompt = `
@@ -22,8 +22,9 @@ Các từ vựng cần sử dụng:
 ${wordList}
 
 YÊU CẦU:
-1. Cuộc trò chuyện dài 6 đến 8 lượt thoại tự nhiên, sinh động, hóm hỉnh.
+1. Cuộc trò chuyện dài 6 đến 8 lượt thoại tự nhiên, sinh động, chuẩn văn hóa bản xứ.
 2. Ngôn ngữ: ${isZh ? 'Tiếng Trung (Hán tự)' : 'Tiếng Anh'}, có kèm bản dịch tiếng Việt cho từng câu.
+3. QUY TẮC JSON: Không dùng dấu ngoặc kép " bên trong các giá trị string (dùng dấu ngoặc đơn ' hoặc dấu ngoặc vuông 【】 để không gây lỗi JSON).
 
 JSON TRẢ VỀ:
 {
@@ -34,8 +35,8 @@ JSON TRẢ VỀ:
       "avatar": "👨‍💼",
       "text": "Câu nói của A",
       "translation": "Bản dịch tiếng Việt",
-      "highlightWord": "Từ vựng được dùng",
-      "phonetic": "Phiên âm nếu có"
+      "highlightWord": "Từ vựng",
+      "phonetic": "Phiên âm"
     }
   ]
 }
