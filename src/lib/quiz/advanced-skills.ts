@@ -267,21 +267,107 @@ export function generateGrammarExercises(
 ): GrammarExercise[] {
   const exercises: GrammarExercise[] = []
 
+  const enTemplates = [
+    (term: string) => ({
+      sentence: `She always practices ${term} with her friends`,
+      translation: `Cô ấy luôn luyện tập "${term}" cùng bạn bè của mình`,
+      hint: `Cấu trúc: Chủ ngữ + Trạng từ tần suất (always) + Động từ + Tân ngữ`,
+    }),
+    (term: string) => ({
+      sentence: `Do you know how to use ${term} correctly?`,
+      translation: `Bạn có biết cách sử dụng "${term}" một cách chính xác không?`,
+      hint: `Cấu trúc: Trợ động từ Do + Chủ ngữ + know how to + Động từ nguyên thể`,
+    }),
+    (term: string) => ({
+      sentence: `Understanding ${term} will help you in daily communication`,
+      translation: `Việc hiểu rõ "${term}" sẽ giúp bạn trong giao tiếp hàng ngày`,
+      hint: `Cấu trúc: Danh động từ (V-ing làm chủ ngữ) + will help + Tân ngữ`,
+    }),
+    (term: string) => ({
+      sentence: `Because he mastered ${term} he solved the problem easily`,
+      translation: `Bởi vì anh ấy đã nắm vững "${term}", anh ấy đã giải quyết vấn đề dễ dàng`,
+      hint: `Cấu trúc: Mệnh đề chỉ nguyên nhân (Because + S + V-ed) + Mệnh đề chính`,
+    }),
+    (term: string) => ({
+      sentence: `They are actively discussing the true meaning of ${term}`,
+      translation: `Họ đang tích cực thảo luận về ý nghĩa thực sự của "${term}"`,
+      hint: `Cấu trúc: Thì hiện tại tiếp diễn (S + are + V-ing + Object)`,
+    }),
+    (term: string) => ({
+      sentence: `If you want to succeed you must practice ${term}`,
+      translation: `Nếu bạn muốn thành công, bạn phải thực hành "${term}"`,
+      hint: `Cấu trúc: Câu điều kiện loại 1 (If + S + V, S + modal verb + V)`,
+    }),
+    (term: string) => ({
+      sentence: `Yesterday we explored many interesting ideas about ${term}`,
+      translation: `Hôm qua chúng tôi đã khám phá nhiều ý tưởng thú vị về "${term}"`,
+      hint: `Cấu trúc: Thì quá khứ đơn với trạng từ thời gian (Yesterday + S + V-ed)`,
+    }),
+    (term: string) => ({
+      sentence: `Mastering ${term} will make your language skills much better`,
+      translation: `Thành thạo "${term}" sẽ làm kỹ năng ngôn ngữ của bạn tốt hơn nhiều`,
+      hint: `Cấu trúc: S + make + Tân ngữ + Tính từ so sánh hơn (much better)`,
+    }),
+  ]
+
+  const zhTemplates = [
+    (term: string) => ({
+      sentence: `她 经常 和 朋友 一起 练习 ${term}`,
+      translation: `Cô ấy thường cùng bạn bè luyện tập "${term}"`,
+      hint: `Cấu trúc: Chủ ngữ + Trạng từ + 和...一起 (Cùng ai đó) + Động từ`,
+    }),
+    (term: string) => ({
+      sentence: `你 知道 怎么 正确 使用 ${term} 吗？`,
+      translation: `Bạn có biết cách sử dụng "${term}" đúng cách không?`,
+      hint: `Cấu trúc câu hỏi: 你知道怎么...吗？`,
+    }),
+    (term: string) => ({
+      sentence: `掌握 ${term} 对 我们 的 学习 很 有 帮助`,
+      translation: `Nắm vững "${term}" rất có ích cho việc học của chúng ta`,
+      hint: `Cấu trúc: 对...很有帮助 (Rất có lợi/giúp ích cho cái gì)`,
+    }),
+    (term: string) => ({
+      sentence: `因为 他 学会 了 ${term} 所以 考 了 满分`,
+      translation: `Bởi vì anh ấy đã học được "${term}" nên đã đạt điểm tối đa`,
+      hint: `Cấu trúc liên từ nguyên nhân - kết quả: 因为...所以...`,
+    }),
+    (term: string) => ({
+      sentence: `老师 正在 给 我们 讲解 ${term} 的 用法`,
+      translation: `Thầy giáo đang giảng giải cho chúng tôi cách dùng của "${term}"`,
+      hint: `Cấu trúc: 正在 (Đang làm gì) + 给...讲解 (Giảng cho ai)`,
+    }),
+    (term: string) => ({
+      sentence: `如果 你 想 提高 汉语 就 要 掌握 ${term}`,
+      translation: `Nếu bạn muốn nâng cao tiếng Trung thì phải nắm vững "${term}"`,
+      hint: `Cấu trúc giả định: 如果...就... (Nếu... thì...)`,
+    }),
+    (term: string) => ({
+      sentence: `昨天 我们 在 课堂 上 认真 学习 了 ${term}`,
+      translation: `Hôm qua chúng tôi đã chăm chỉ học "${term}" trên lớp`,
+      hint: `Cấu trúc quá khứ: Thời gian + Ở đâu (在...) + Phó từ (认真) + Động từ + 了`,
+    }),
+  ]
+
   cards.forEach((card, index) => {
     const isZh = isChineseText(card.term)
     let sentence = ''
     let translation = ''
+    let hint = `Từ vựng trọng tâm: ${card.term} (${card.definition})`
 
     if (card.example_sentence && card.example_sentence.trim()) {
       sentence = card.example_sentence.replace(/\[|\]/g, '').trim()
       translation = `Nghĩa của từ chính "${card.term}": ${card.definition}`
     } else {
       if (isZh) {
-        sentence = `我 每天 都 在 学习 ${card.term}`
-        translation = `Tôi mỗi ngày đều đang học ${card.term} (${card.definition})`
+        const tpl = zhTemplates[index % zhTemplates.length](card.term)
+        sentence = tpl.sentence
+        translation = `${tpl.translation} (${card.definition})`
+        hint = tpl.hint
       } else {
-        sentence = `Learning ${card.term} is very important for success`
-        translation = `Học từ ${card.term} (${card.definition}) rất quan trọng cho thành công`
+        const tpl = enTemplates[index % enTemplates.length](card.term)
+        sentence = tpl.sentence
+        translation = `${tpl.translation} (${card.definition})`
+        hint = tpl.hint
       }
     }
 
@@ -299,7 +385,7 @@ export function generateGrammarExercises(
         targetSentence: words.join(isZh ? '' : ' '),
         scrambledWords: scrambled,
         translation,
-        hint: `Từ vựng trọng tâm: ${card.term} (${card.definition})`,
+        hint,
       })
     }
   })

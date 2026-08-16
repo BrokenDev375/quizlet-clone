@@ -47,6 +47,8 @@ export default function GrammarPage({
   const [scoreCount, setScoreCount] = useState(0)
   const [isCompleted, setIsCompleted] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [isGeneratingAI, setIsGeneratingAI] = useState(false)
+  const [aiError, setAiError] = useState<string | null>(null)
 
   const supabase = createClient()
   const router = useRouter()
@@ -82,6 +84,47 @@ export default function GrammarPage({
 
     loadData()
   }, [setId])
+
+  const handleGenerateAI = async () => {
+    if (!set || cards.length === 0 || isGeneratingAI) return
+    setIsGeneratingAI(true)
+    setAiError(null)
+
+    try {
+      const res = await fetch('/api/ai/grammar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cards, setTitle: set.title }),
+      })
+
+      if (!res.ok) {
+        const errData = await res.json()
+        throw new Error(errData.error || 'Lỗi khi gọi Gemini AI')
+      }
+
+      const aiData = await res.json()
+      if (aiData.exercises && Array.isArray(aiData.exercises) && aiData.exercises.length > 0) {
+        const mapped = aiData.exercises.map((ex: any, idx: number) => ({
+          id: `ai_grammar_${idx}_${Date.now()}`,
+          title: ex.title || `Thử thách ngữ pháp AI #${idx + 1}`,
+          targetSentence: ex.targetSentence,
+          scrambledWords: ex.scrambledWords || [],
+          translation: ex.translation || '',
+          hint: ex.hint || 'Cấu trúc ngữ pháp chuẩn',
+        }))
+        setExercises(mapped)
+        setCurrentIndex(0)
+        setScoreCount(0)
+        setIsCompleted(false)
+        playSuccessChime()
+      }
+    } catch (err: any) {
+      console.warn('AI grammar generation fallback:', err)
+      setAiError(err.message || 'Lỗi khi gọi Gemini AI')
+    } finally {
+      setIsGeneratingAI(false)
+    }
+  }
 
   // Khởi tạo các token từ xáo trộn cho câu hiện tại
   useEffect(() => {
@@ -237,7 +280,7 @@ export default function GrammarPage({
   return (
     <div className="container max-w-3xl mx-auto py-6 px-4 space-y-6">
       {/* Top Navigation & Progress */}
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <Link
           href={`/sets/${setId}`}
           className={buttonVariants({
@@ -249,24 +292,47 @@ export default function GrammarPage({
           <ArrowLeft className="size-4" /> Quay lại
         </Link>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center flex-wrap gap-2 w-full sm:w-auto">
+          {/* Magic AI Button */}
+          <Button
+            size="sm"
+            onClick={handleGenerateAI}
+            disabled={isGeneratingAI}
+            className="text-xs gap-1.5 bg-gradient-to-r from-purple-600 via-indigo-600 to-pink-600 text-white font-bold shadow-md shadow-purple-500/20 hover:scale-105 transition-all"
+          >
+            {isGeneratingAI ? (
+              <>
+                <div className="size-3 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                Gemini đang tạo câu...
+              </>
+            ) : (
+              <>
+                <Sparkles className="size-3.5" /> ✨ Nhờ Gemini AI tạo câu mới
+              </>
+            )}
+          </Button>
+
           <Badge variant="outline" className="font-mono text-xs border-indigo-500/30 text-indigo-600 dark:text-indigo-400">
             {currentIndex + 1} / {exercises.length}
           </Badge>
-          <span className="text-xs font-bold text-muted-foreground hidden sm:inline">
-            Ngữ pháp & Cấu trúc câu
-          </span>
-        </div>
 
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={handleNextQuestion}
-          className="text-xs text-muted-foreground hover:text-foreground gap-1"
-        >
-          Bỏ qua <ArrowRight className="size-3.5" />
-        </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleNextQuestion}
+            className="text-xs text-muted-foreground hover:text-foreground gap-1 ml-auto sm:ml-0"
+          >
+            Bỏ qua <ArrowRight className="size-3.5" />
+          </Button>
+        </div>
       </div>
+
+      {aiError && (
+        <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs flex items-center justify-between">
+          <span>⚠️ {aiError}</span>
+          <button onClick={() => setAiError(null)} className="font-bold ml-2">✕</button>
+        </div>
+      )}
 
       <Progress value={progressPercent} className="h-2" />
 
