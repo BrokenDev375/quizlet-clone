@@ -90,6 +90,39 @@ export default function DialoguePage({
     }
   }
 
+  const [isGeneratingAI, setIsGeneratingAI] = useState(false)
+  const [aiError, setAiError] = useState<string | null>(null)
+
+  const handleGenerateAI = async () => {
+    if (!set || cards.length === 0 || isGeneratingAI) return
+    setIsGeneratingAI(true)
+    setAiError(null)
+
+    try {
+      const res = await fetch('/api/ai/dialogue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cards, setTitle: set.title }),
+      })
+
+      if (!res.ok) {
+        const errData = await res.json()
+        throw new Error(errData.error || 'Lỗi khi gọi Gemini AI')
+      }
+
+      const aiData = await res.json()
+      if (aiData.lines && Array.isArray(aiData.lines) && aiData.lines.length > 0) {
+        setDialogueLines(aiData.lines)
+        setActiveLineId(null)
+      }
+    } catch (err: any) {
+      console.warn('AI dialogue fallback:', err)
+      setAiError(err.message || 'Lỗi khi gọi Gemini AI')
+    } finally {
+      setIsGeneratingAI(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-[60vh] flex flex-col items-center justify-center space-y-4">
@@ -117,7 +150,7 @@ export default function DialoguePage({
   return (
     <div className="container max-w-3xl mx-auto py-6 px-4 space-y-6">
       {/* Top Header */}
-      <div className="flex items-center justify-between gap-4 border-b border-border/80 pb-4">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-border/80 pb-4">
         <div className="flex items-center gap-3">
           <Link
             href={`/sets/${setId}`}
@@ -135,7 +168,26 @@ export default function DialoguePage({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center flex-wrap gap-2 w-full sm:w-auto">
+          {/* Magic AI Button */}
+          <Button
+            size="sm"
+            onClick={handleGenerateAI}
+            disabled={isGeneratingAI}
+            className="text-xs gap-1.5 bg-gradient-to-r from-purple-600 via-indigo-600 to-pink-600 text-white font-bold shadow-md shadow-purple-500/20 hover:scale-105 transition-all"
+          >
+            {isGeneratingAI ? (
+              <>
+                <div className="size-3 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                Gemini đang viết...
+              </>
+            ) : (
+              <>
+                <Sparkles className="size-3.5" /> ✨ Nhờ Gemini AI tạo hội thoại
+              </>
+            )}
+          </Button>
+
           <Button
             variant="outline"
             size="sm"
@@ -143,7 +195,7 @@ export default function DialoguePage({
             className="text-xs gap-1.5"
           >
             {showTranslations ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
-            {showTranslations ? 'Ẩn dịch nghĩa' : 'Hiện dịch nghĩa'}
+            {showTranslations ? 'Ẩn dịch' : 'Hiện dịch'}
           </Button>
 
           <Button
@@ -155,6 +207,13 @@ export default function DialoguePage({
           </Button>
         </div>
       </div>
+
+      {aiError && (
+        <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs flex items-center justify-between">
+          <span>⚠️ {aiError}</span>
+          <button onClick={() => setAiError(null)} className="font-bold ml-2">✕</button>
+        </div>
+      )}
 
       {/* Dialogue Chat Stream */}
       <div className="space-y-4 pt-2">
