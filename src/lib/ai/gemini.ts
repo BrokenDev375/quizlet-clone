@@ -47,8 +47,8 @@ export async function callGeminiJSON<T>(prompt: string): Promise<T> {
     throw new Error('Chưa cấu hình GEMINI_API_KEY trong .env.local')
   }
 
-  // Thử các model mới nhất của Google Gemini
-  const models = ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-flash-latest', 'gemini-2.5-flash']
+  // Chỉ sử dụng các model thế hệ mới nhất của Google Gemini
+  const models = ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash']
   let lastError: any = null
 
   for (const model of models) {
