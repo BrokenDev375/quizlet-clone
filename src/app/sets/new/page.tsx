@@ -25,6 +25,7 @@ interface CardItem {
   id: string
   term: string
   definition: string
+  example_sentence?: string
 }
 
 export default function NewSetPage() {
@@ -32,9 +33,9 @@ export default function NewSetPage() {
   const [description, setDescription] = useState('')
   const [isPublic, setIsPublic] = useState(true)
   const [cards, setCards] = useState<CardItem[]>([
-    { id: '1', term: '', definition: '' },
-    { id: '2', term: '', definition: '' },
-    { id: '3', term: '', definition: '' },
+    { id: '1', term: '', definition: '', example_sentence: '' },
+    { id: '2', term: '', definition: '', example_sentence: '' },
+    { id: '3', term: '', definition: '', example_sentence: '' },
   ])
   const [importOpen, setImportOpen] = useState(false)
   const [importText, setImportText] = useState('')
@@ -59,7 +60,7 @@ export default function NewSetPage() {
   const handleAddCard = () => {
     setCards([
       ...cards,
-      { id: Math.random().toString(36).substring(2, 9), term: '', definition: '' },
+      { id: Math.random().toString(36).substring(2, 9), term: '', definition: '', example_sentence: '' },
     ])
   }
 
@@ -71,9 +72,9 @@ export default function NewSetPage() {
     setCards(cards.filter((_, i) => i !== index))
   }
 
-  const handleCardChange = (index: number, field: 'term' | 'definition', value: string) => {
+  const handleCardChange = (index: number, field: keyof CardItem, value: string) => {
     const updated = [...cards]
-    updated[index][field] = value
+    updated[index] = { ...updated[index], [field]: value }
     setCards(updated)
   }
 
@@ -99,22 +100,20 @@ export default function NewSetPage() {
         parts = [trimmed, '']
       }
 
-      const term = parts[0]?.trim() || ''
-      const definition = parts.slice(1).join(' - ').trim() || ''
-
-      if (term || definition) {
+      if (parts.length >= 2) {
         parsedCards.push({
           id: Math.random().toString(36).substring(2, 9),
-          term,
-          definition,
+          term: parts[0]?.trim() || '',
+          definition: parts[1]?.trim() || '',
+          example_sentence: parts[2]?.trim() || '',
         })
       }
     })
 
     if (parsedCards.length > 0) {
-      setCards(parsedCards)
-      setImportOpen(false)
+      setCards([...cards.filter((c) => c.term.trim() || c.definition.trim()), ...parsedCards])
       setImportText('')
+      setImportOpen(false)
     }
   }
 
@@ -155,17 +154,25 @@ export default function NewSetPage() {
 
       if (setError) throw setError
 
-      // 2. Insert Cards
+      // 2. Insert Cards (with graceful fallback if example_sentence column is pending)
       const cardPayload = validCards.map((c, idx) => ({
         set_id: setData.id,
         term: c.term.trim(),
         definition: c.definition.trim(),
+        example_sentence: c.example_sentence?.trim() || null,
         position: idx,
       }))
 
-      const { error: cardsError } = await supabase
+      let { error: cardsError } = await supabase
         .from('cards')
         .insert(cardPayload)
+
+      if (cardsError && cardsError.message?.includes('example_sentence')) {
+        // Fallback without example_sentence if column not yet added
+        const fallbackCards = cardPayload.map(({ example_sentence, ...rest }) => rest)
+        const fallbackRes = await supabase.from('cards').insert(fallbackCards)
+        cardsError = fallbackRes.error
+      }
 
       if (cardsError) throw cardsError
 
@@ -178,75 +185,78 @@ export default function NewSetPage() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* Back button */}
-      <div className="mb-6 flex items-center justify-between">
-        <Link href="/dashboard" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition">
-          <ArrowLeft className="size-4" />
-          Quay lại thư viện
-        </Link>
-      </div>
-
+    <div className="container max-w-4xl mx-auto py-8 px-4">
       <form onSubmit={handleSubmit} className="space-y-8">
-        {/* Header and actions */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/80 pb-6">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Tạo học phần mới</h1>
-            <p className="text-sm text-muted-foreground mt-1">Tạo các thẻ ghi nhớ để ôn tập và kiểm tra kiến thức</p>
-          </div>
+        {/* Top bar */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-border/80 pb-5">
           <div className="flex items-center gap-3">
             <Button
               type="button"
-              variant="outline"
-              onClick={() => setImportOpen(!importOpen)}
-              className="gap-1.5"
+              variant="ghost"
+              size="icon"
+              onClick={() => router.back()}
+              className="rounded-full size-9"
             >
-              <FileText className="size-4" />
-              Import dữ liệu
+              <ArrowLeft className="size-5" />
             </Button>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">Tạo học phần mới</h1>
+              <p className="text-xs text-muted-foreground">Thêm các thuật ngữ tiếng Anh, tiếng Trung và định nghĩa</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setImportOpen(!importOpen)}
+              className="gap-1.5 text-xs flex-1 sm:flex-initial"
+            >
+              <FileText className="size-3.5" /> Nhập nhanh (CSV/Text)
+            </Button>
+
             <Button
               type="submit"
               disabled={loading}
-              className="bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white font-medium px-6 shadow-md shadow-indigo-500/20"
+              className="gap-1.5 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white font-medium text-xs flex-1 sm:flex-initial"
             >
               {loading ? (
-                <Loader2 className="size-4 animate-spin" />
+                <Loader2 className="size-3.5 animate-spin" />
               ) : (
-                'Tạo học phần'
+                <Sparkles className="size-3.5" />
               )}
+              Tạo học phần
             </Button>
           </div>
         </div>
 
         {errorMsg && (
-          <div className="p-4 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive flex items-center gap-2.5">
-            <AlertCircle className="size-5 shrink-0" />
-            <span className="text-sm font-medium">{errorMsg}</span>
+          <div className="p-3.5 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive flex items-center gap-2 text-sm">
+            <AlertCircle className="size-4 shrink-0" />
+            <span>{errorMsg}</span>
           </div>
         )}
 
-        {/* Import dialog drawer */}
+        {/* Bulk Import Panel */}
         {importOpen && (
-          <Card className="border-indigo-500/30 bg-indigo-50/50 dark:bg-indigo-950/20">
-            <CardContent className="pt-6 space-y-4">
+          <Card className="border-indigo-500/30 bg-indigo-500/5 transition">
+            <CardContent className="p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <FileText className="size-5 text-indigo-600 dark:text-indigo-400" />
-                  <h3 className="font-semibold">Nhập nhanh từ danh sách văn bản</h3>
-                </div>
-                <Button variant="ghost" size="xs" onClick={() => setImportOpen(false)}>Đóng</Button>
+                <span className="font-semibold text-sm">Nhập dữ liệu nhanh</span>
+                <span className="text-xs text-muted-foreground">Định dạng: Từ vựng - Định nghĩa (hoặc Tab/Phẩy)</span>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Dán danh sách từ vựng. Định dạng hỗ trợ: mỗi dòng một thẻ, phân cách giữa thuật ngữ và định nghĩa bằng dấu gạch ngang (VD: <code className="bg-muted px-1.5 py-0.5 rounded">Apple - Quả táo</code>) hoặc phím Tab.
-              </p>
               <Textarea
-                rows={5}
-                placeholder={"Dog - Con chó\nCat - Con mèo\nBook - Quyển sách"}
+                placeholder={`Hello - Xin chào\nApple - Quả táo - I like to eat an [apple]\n你好 - Xin chào - 老师，[你好]！`}
                 value={importText}
                 onChange={(e) => setImportText(e.target.value)}
-                className="font-mono text-sm bg-background"
+                rows={4}
+                className="bg-background font-mono text-xs"
               />
               <div className="flex justify-end gap-2">
+                <Button type="button" variant="ghost" size="sm" onClick={() => setImportOpen(false)}>
+                  Hủy
+                </Button>
                 <Button type="button" size="sm" onClick={handleImport}>
                   Nhập vào bộ thẻ
                 </Button>
@@ -260,7 +270,7 @@ export default function NewSetPage() {
           <div>
             <Input
               type="text"
-              placeholder="Nhập tiêu đề (VD: 3000 Từ Vựng Tiếng Anh Thông Dụng, Sinh học 12...)"
+              placeholder="Nhập tiêu đề (VD: HSK 1 Tiếng Trung, 3000 Từ Vựng Tiếng Anh...)"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               className="text-lg font-semibold h-12 px-4 bg-card/60"
@@ -312,7 +322,7 @@ export default function NewSetPage() {
               <CardContent className="p-4 sm:p-6">
                 <div className="flex items-center justify-between border-b border-border/50 pb-3 mb-4">
                   <span className="font-bold text-sm text-indigo-600 dark:text-indigo-400">
-                    {index + 1}
+                    Thẻ {index + 1}
                   </span>
                   <button
                     type="button"
@@ -327,10 +337,10 @@ export default function NewSetPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <label className="text-xs uppercase font-semibold tracking-wider text-muted-foreground">
-                      Thuật ngữ / Từ vựng
+                      Thuật ngữ / Từ vựng (Tiếng Anh, Tiếng Trung...)
                     </label>
                     <Input
-                      placeholder="Nhập thuật ngữ..."
+                      placeholder="VD: Serendipity hoặc 你好..."
                       value={card.term}
                       onChange={(e) => handleCardChange(index, 'term', e.target.value)}
                       className="bg-background"
@@ -342,7 +352,7 @@ export default function NewSetPage() {
                       Định nghĩa / Ý nghĩa
                     </label>
                     <Input
-                      placeholder="Nhập định nghĩa..."
+                      placeholder="VD: Sự tình cờ may mắn hoặc Xin chào..."
                       value={card.definition}
                       onChange={(e) => handleCardChange(index, 'definition', e.target.value)}
                       className="bg-background"
@@ -350,35 +360,47 @@ export default function NewSetPage() {
                     />
                   </div>
                 </div>
+
+                {/* Câu ví dụ tùy chọn */}
+                <div className="mt-3 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs uppercase font-semibold tracking-wider text-muted-foreground">
+                      Câu ví dụ ngữ cảnh (Tùy chọn - Dùng đục lỗ khi thi)
+                    </label>
+                    <span className="text-[11px] text-muted-foreground">
+                      Mẹo: Dùng [từ] để chỉ định ô đục lỗ (VD: 老师，[你好]！)
+                    </span>
+                  </div>
+                  <Input
+                    placeholder="VD: It was pure [serendipity]... hoặc 老师，[你好]！"
+                    value={card.example_sentence || ''}
+                    onChange={(e) => handleCardChange(index, 'example_sentence', e.target.value)}
+                    className="bg-background text-sm"
+                  />
+                </div>
               </CardContent>
             </Card>
           ))}
 
-          {/* Add Card Button */}
           <Button
             type="button"
             variant="outline"
             onClick={handleAddCard}
-            className="w-full py-6 border-dashed border-2 border-border hover:border-indigo-500 hover:text-indigo-600 font-semibold gap-2 transition"
+            className="w-full h-12 border-dashed border-2 hover:border-indigo-500 hover:bg-indigo-500/5 text-muted-foreground hover:text-indigo-600 dark:hover:text-indigo-400 gap-2"
           >
-            <Plus className="size-5" />
-            + THÊM THẺ MỚI
+            <Plus className="size-4" /> Thêm thẻ mới
           </Button>
         </div>
 
-        {/* Bottom Save Action */}
-        <div className="flex justify-end pt-4 border-t border-border">
+        <div className="flex justify-end pt-4">
           <Button
             type="submit"
             disabled={loading}
             size="lg"
-            className="bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white font-semibold px-8 shadow-lg shadow-indigo-500/25"
+            className="bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white font-semibold shadow-lg shadow-indigo-500/25 px-8"
           >
-            {loading ? (
-              <Loader2 className="size-5 animate-spin" />
-            ) : (
-              'Hoàn tất và lưu học phần'
-            )}
+            {loading ? <Loader2 className="size-4 animate-spin mr-2" /> : null}
+            Hoàn tất & Tạo học phần
           </Button>
         </div>
       </form>

@@ -123,11 +123,18 @@ export default function SetDetailPage({ params }: { params: Promise<{ id: string
 
   const handleSpeak = (text: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation()
-    if ('speechSynthesis' in window) {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window && text) {
       window.speechSynthesis.cancel()
-      const utterance = new SpeechSynthesisUtterance(text)
-      // Auto detect english/vietnamese
-      utterance.lang = /[à-ỹÀ-Ỹ]/.test(text) ? 'vi-VN' : 'en-US'
+      const utterance = new SpeechSynthesisUtterance(text.trim())
+      if (/[\u4e00-\u9fa5]/.test(text)) {
+        utterance.lang = 'zh-CN'
+        utterance.rate = 0.85
+      } else if (/[à-ỹÀ-Ỹ]/.test(text)) {
+        utterance.lang = 'vi-VN'
+      } else {
+        utterance.lang = 'en-US'
+        utterance.rate = 0.95
+      }
       window.speechSynthesis.speak(utterance)
     }
   }

@@ -12,6 +12,7 @@ import {
   generateAdaptiveLearnBatch,
   checkWrittenAnswer,
 } from '@/lib/quiz/question-generator'
+import { speakMultilingualText } from '@/lib/quiz/sentence-templates'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
@@ -128,14 +129,9 @@ export default function LearnModePage({
     }
   }, [currentIndex, currentQueue, isAnswered])
 
-  // Phát âm Text-to-Speech
+  // Phát âm Text-to-Speech đa ngôn ngữ (Tiếng Anh, Tiếng Trung, Tiếng Việt)
   const speakText = (text: string) => {
-    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return
-    window.speechSynthesis.cancel()
-    const utterance = new SpeechSynthesisUtterance(text)
-    utterance.lang = 'en-US'
-    utterance.rate = 0.95
-    window.speechSynthesis.speak(utterance)
+    speakMultilingualText(text)
   }
 
   // 2. Xử lý trả lời câu hỏi

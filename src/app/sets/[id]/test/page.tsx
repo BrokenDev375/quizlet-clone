@@ -11,6 +11,7 @@ import {
   generateCustomTestQuestions,
   checkWrittenAnswer,
 } from '@/lib/quiz/question-generator'
+import { speakMultilingualText } from '@/lib/quiz/sentence-templates'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -171,12 +172,7 @@ export default function TestModePage({
   }
 
   const speakText = (text: string) => {
-    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return
-    window.speechSynthesis.cancel()
-    const utterance = new SpeechSynthesisUtterance(text)
-    utterance.lang = 'en-US'
-    utterance.rate = 0.95
-    window.speechSynthesis.speak(utterance)
+    speakMultilingualText(text)
   }
 
   if (loading) {

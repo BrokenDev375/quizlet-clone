@@ -1,5 +1,9 @@
 import { Card as CardType } from '@/types/database.types'
-import { generateContextClozeSentence } from './sentence-templates'
+import {
+  generateContextClozeSentence,
+  generateSmartLetterHint,
+  isChineseText,
+} from './sentence-templates'
 
 export type QuestionType =
   | 'mc_term_to_def'
@@ -20,7 +24,7 @@ export interface CardProgressState {
 
 export interface QuizQuestion {
   id: string
-  card: CardType
+  card: CardType & { example_sentence?: string | null }
   type: QuestionType
   prompt: string
   promptTypeLabel: string
@@ -31,22 +35,36 @@ export interface QuizQuestion {
   clozePrefix?: string
   clozeSuffix?: string
   letterHint?: string
+  isChinese?: boolean
   userResponse?: string
   isCorrect?: boolean
 }
 
 /**
- * Chuẩn hóa chuỗi để so sánh câu trả lời tự luận (loại bỏ dấu câu, khoảng trắng, viết hoa)
+ * Chuẩn hóa chuỗi để so sánh câu trả lời tự luận (hỗ trợ cả tiếng Anh, tiếng Trung và tiếng Việt)
  */
 export function normalizeAnswer(text: string): string {
   if (!text) return ''
-  return text
+  const isZh = isChineseText(text)
+
+  let normalized = text
     .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '') // Xóa dấu tiếng Việt / accents
-    .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?"'–—]/g, '') // Xóa dấu câu
-    .replace(/\s+/g, ' ') // Gộp khoảng trắng
     .trim()
+    // Xóa dấu câu tiếng Anh và tiếng Trung (full-width punctuation)
+    .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?"'–—。，！？；：“”‘’（）]/g, '')
+
+  if (!isZh) {
+    // Xóa dấu tiếng Việt / accents cho chữ Latin
+    normalized = normalized
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, ' ')
+  } else {
+    // Với tiếng Trung: loại bỏ mọi khoảng trắng thừa giữa các chữ Hán
+    normalized = normalized.replace(/\s+/g, '')
+  }
+
+  return normalized.trim()
 }
 
 /**
@@ -59,9 +77,9 @@ export function checkWrittenAnswer(userInput: string, targetAnswer: string): boo
   if (!normUser || !normTarget) return false
   if (normUser === normTarget) return true
 
-  // Cho phép so khớp nếu người dùng nhập một trong các nghĩa (phân cách bởi dấu ; hoặc ,)
+  // Cho phép so khớp nếu người dùng nhập một trong các nghĩa (phân cách bởi dấu ; hoặc , hoặc / hoặc 、 trong tiếng Trung)
   const targetSubParts = targetAnswer
-    .split(/[,;\/\n]/)
+    .split(/[,;\/\n、]/)
     .map((p) => normalizeAnswer(p))
     .filter(Boolean)
 
@@ -71,28 +89,16 @@ export function checkWrittenAnswer(userInput: string, targetAnswer: string): boo
 }
 
 /**
- * Tạo gợi ý ký tự (Letter Scaffolding) ví dụ: "S _ _ _ _ _ _ y" cho từ "Serendipity"
- */
-export function generateLetterHint(term: string): string {
-  const clean = term.trim()
-  if (clean.length <= 2) return `${clean.length} ký tự`
-  if (clean.length <= 4) return `${clean[0]} _ _ ${clean[clean.length - 1]}`
-  
-  // Từ 5 ký tự trở lên: hiển thị chữ cái đầu, chữ cái cuối và độ dài
-  const middle = ' _ '.repeat(clean.length - 2)
-  return `${clean[0]}${middle}${clean[clean.length - 1]} (${clean.length} chữ cái)`
-}
-
-/**
  * Sinh 1 câu hỏi cụ thể cho 1 thẻ flashcard theo đúng dạng
  */
 export function generateQuestionForCard(
-  card: CardType,
-  allCards: CardType[],
+  card: CardType & { example_sentence?: string | null },
+  allCards: (CardType & { example_sentence?: string | null })[],
   type: QuestionType
 ): QuizQuestion {
   const otherCards = allCards.filter((c) => c.id !== card.id)
   const qId = `${card.id}_${type}_${Math.random().toString(36).substring(2, 7)}`
+  const isZh = isChineseText(card.term)
 
   switch (type) {
     case 'mc_term_to_def': {
@@ -111,9 +117,10 @@ export function generateQuestionForCard(
         card,
         type: 'mc_term_to_def',
         prompt: card.term,
-        promptTypeLabel: 'Trắc nghiệm xuôi: Chọn định nghĩa',
+        promptTypeLabel: isZh ? 'Trắc nghiệm: Chọn nghĩa tiếng Việt' : 'Trắc nghiệm xuôi: Chọn định nghĩa',
         targetAnswer: card.definition,
         options,
+        isChinese: isZh,
       }
     }
 
@@ -133,9 +140,10 @@ export function generateQuestionForCard(
         card,
         type: 'mc_def_to_term',
         prompt: card.definition,
-        promptTypeLabel: 'Trắc nghiệm ngược: Chọn thuật ngữ',
+        promptTypeLabel: isZh ? 'Trắc nghiệm: Chọn chữ Hán / Từ tiếng Trung' : 'Trắc nghiệm ngược: Chọn thuật ngữ',
         targetAnswer: card.term,
         options,
+        isChinese: isZh,
       }
     }
 
@@ -157,6 +165,7 @@ export function generateQuestionForCard(
         targetAnswer: isActuallyTrue ? 'true' : 'false',
         tfDisplayDef: displayDef,
         isActuallyTrue,
+        isChinese: isZh,
       }
     }
 
@@ -167,26 +176,34 @@ export function generateQuestionForCard(
         card,
         type: 'written',
         prompt: card.definition,
-        promptTypeLabel: 'Tự luận: Gõ thuật ngữ chính xác',
+        promptTypeLabel: isZh ? 'Tự luận: Gõ chữ Hán / Pinyin' : 'Tự luận: Gõ thuật ngữ chính xác',
         targetAnswer: card.term,
+        isChinese: isZh,
       }
     }
 
     case 'cloze_fill_blank': {
-      // DẠNG ĐIỀN TỪ VÀO CÂU NGỮ CẢNH TIẾNG ANH THẬT
-      const cloze = generateContextClozeSentence(card.term, card.definition)
-      const hint = generateLetterHint(card.term)
-      
+      // DẠNG ĐIỀN TỪ VÀO CÂU NGỮ CẢNH (Ưu tiên câu ví dụ tự nhập nếu có)
+      const cloze = generateContextClozeSentence(
+        card.term,
+        card.definition,
+        card.example_sentence
+      )
+      const hint = generateSmartLetterHint(card.term)
+
       return {
         id: qId,
         card,
         type: 'cloze_fill_blank',
         prompt: card.definition,
-        promptTypeLabel: 'Điền từ còn thiếu vào câu tiếng Anh',
+        promptTypeLabel: isZh
+          ? 'Điền chữ Hán còn thiếu vào câu'
+          : 'Điền từ còn thiếu vào câu',
         targetAnswer: card.term,
         clozePrefix: cloze.prefix,
         clozeSuffix: cloze.suffix,
         letterHint: hint,
+        isChinese: isZh,
       }
     }
   }
@@ -196,7 +213,7 @@ export function generateQuestionForCard(
  * Sinh bộ câu hỏi theo vòng học thích ứng (Adaptive Spaced Repetition Queue)
  */
 export function generateAdaptiveLearnBatch(
-  allCards: CardType[],
+  allCards: (CardType & { example_sentence?: string | null })[],
   progressMap: Record<string, CardProgressState>,
   batchSize = 6
 ): QuizQuestion[] {
@@ -252,7 +269,7 @@ export function generateAdaptiveLearnBatch(
  * Giới hạn tối đa = allCards.length * enabledTypes.length
  */
 export function generateCustomTestQuestions(
-  allCards: CardType[],
+  allCards: (CardType & { example_sentence?: string | null })[],
   config: {
     questionCount: number
     enabledTypes: QuestionType[]
@@ -273,7 +290,7 @@ export function generateCustomTestQuestions(
 
   // 1. Tạo TOÀN BỘ tổ hợp độc nhất (Card x Type)
   const uniquePool: QuizQuestion[] = []
-  
+
   allCards.forEach((card) => {
     enabledTypes.forEach((type) => {
       uniquePool.push(generateQuestionForCard(card, allCards, type))

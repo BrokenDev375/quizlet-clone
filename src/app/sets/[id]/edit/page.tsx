@@ -14,6 +14,7 @@ interface CardItem {
   id?: string
   term: string
   definition: string
+  example_sentence?: string
 }
 
 export default function EditSetPage({ params }: { params: Promise<{ id: string }> }) {
@@ -81,7 +82,7 @@ export default function EditSetPage({ params }: { params: Promise<{ id: string }
   const handleAddCard = () => {
     setCards([
       ...cards,
-      { term: '', definition: '' },
+      { term: '', definition: '', example_sentence: '' },
     ])
   }
 
@@ -93,9 +94,9 @@ export default function EditSetPage({ params }: { params: Promise<{ id: string }
     setCards(cards.filter((_, i) => i !== index))
   }
 
-  const handleCardChange = (index: number, field: 'term' | 'definition', value: string) => {
+  const handleCardChange = (index: number, field: keyof CardItem, value: string) => {
     const updated = [...cards]
-    updated[index][field] = value
+    updated[index] = { ...updated[index], [field]: value }
     setCards(updated)
   }
 
@@ -142,12 +143,20 @@ export default function EditSetPage({ params }: { params: Promise<{ id: string }
         set_id: setId,
         term: c.term.trim(),
         definition: c.definition.trim(),
+        example_sentence: c.example_sentence?.trim() || null,
         position: idx,
       }))
 
-      const { error: insertCardsError } = await supabase
+      let { error: insertCardsError } = await supabase
         .from('cards')
         .insert(cardPayload)
+
+      if (insertCardsError && insertCardsError.message?.includes('example_sentence')) {
+        // Graceful fallback if column not yet added
+        const fallbackCards = cardPayload.map(({ example_sentence, ...rest }) => rest)
+        const fallbackRes = await supabase.from('cards').insert(fallbackCards)
+        insertCardsError = fallbackRes.error
+      }
 
       if (insertCardsError) throw insertCardsError
 
@@ -178,44 +187,58 @@ export default function EditSetPage({ params }: { params: Promise<{ id: string }
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-8">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/80 pb-6">
+        {/* Top bar */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-border/80 pb-5">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Chỉnh sửa học phần</h1>
-            <p className="text-sm text-muted-foreground mt-1">Cập nhật nội dung các thẻ ghi nhớ</p>
+            <h1 className="text-2xl font-bold tracking-tight">Chỉnh sửa học phần</h1>
+            <p className="text-xs text-muted-foreground">Cập nhật thuật ngữ, định nghĩa và câu ví dụ</p>
           </div>
+
           <Button
             type="submit"
             disabled={loading}
-            className="bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white font-medium px-6 shadow-md shadow-indigo-500/20"
+            className="bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white font-medium shadow-md shadow-indigo-500/20"
           >
-            {loading ? <Loader2 className="size-4 animate-spin" /> : 'Lưu thay đổi'}
+            {loading ? <Loader2 className="size-4 animate-spin mr-2" /> : null}
+            Lưu thay đổi
           </Button>
         </div>
 
         {errorMsg && (
-          <div className="p-4 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive flex items-center gap-2.5">
-            <AlertCircle className="size-5 shrink-0" />
-            <span className="text-sm font-medium">{errorMsg}</span>
+          <div className="p-3.5 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive flex items-center gap-2 text-sm">
+            <AlertCircle className="size-4 shrink-0" />
+            <span>{errorMsg}</span>
           </div>
         )}
 
+        {/* Set Details */}
         <div className="space-y-4">
-          <Input
-            type="text"
-            placeholder="Tiêu đề học phần"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            className="text-lg font-semibold h-12 px-4 bg-card/60"
-            required
-          />
+          <div>
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block mb-1">
+              Tiêu đề
+            </label>
+            <Input
+              type="text"
+              placeholder="Nhập tiêu đề..."
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="text-lg font-semibold h-12 bg-card/60"
+              required
+            />
+          </div>
 
-          <Textarea
-            placeholder="Mô tả học phần..."
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            rows={2}
-            className="bg-card/60"
-          />
+          <div>
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block mb-1">
+              Mô tả (không bắt buộc)
+            </label>
+            <Textarea
+              placeholder="Thêm mô tả..."
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={2}
+              className="bg-card/60"
+            />
+          </div>
 
           <div className="flex items-center gap-4 pt-1">
             <button
@@ -229,11 +252,11 @@ export default function EditSetPage({ params }: { params: Promise<{ id: string }
             >
               {isPublic ? (
                 <>
-                  <Globe className="size-3.5" /> Công khai
+                  <Globe className="size-3.5" /> Công khai (Mọi người có thể xem & học)
                 </>
               ) : (
                 <>
-                  <Lock className="size-3.5" /> Riêng tư
+                  <Lock className="size-3.5" /> Riêng tư (Chỉ mình bạn xem được)
                 </>
               )}
             </button>
@@ -249,7 +272,7 @@ export default function EditSetPage({ params }: { params: Promise<{ id: string }
               <CardContent className="p-4 sm:p-6">
                 <div className="flex items-center justify-between border-b border-border/50 pb-3 mb-4">
                   <span className="font-bold text-sm text-indigo-600 dark:text-indigo-400">
-                    {index + 1}
+                    Thẻ {index + 1}
                   </span>
                   <button
                     type="button"
@@ -264,10 +287,10 @@ export default function EditSetPage({ params }: { params: Promise<{ id: string }
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <label className="text-xs uppercase font-semibold tracking-wider text-muted-foreground">
-                      Thuật ngữ
+                      Thuật ngữ / Từ vựng (Tiếng Anh, Tiếng Trung...)
                     </label>
                     <Input
-                      placeholder="Nhập thuật ngữ..."
+                      placeholder="VD: Serendipity hoặc 你好..."
                       value={card.term}
                       onChange={(e) => handleCardChange(index, 'term', e.target.value)}
                       className="bg-background"
@@ -276,16 +299,34 @@ export default function EditSetPage({ params }: { params: Promise<{ id: string }
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs uppercase font-semibold tracking-wider text-muted-foreground">
-                      Định nghĩa
+                      Định nghĩa / Ý nghĩa
                     </label>
                     <Input
-                      placeholder="Nhập định nghĩa..."
+                      placeholder="VD: Sự tình cờ may mắn hoặc Xin chào..."
                       value={card.definition}
                       onChange={(e) => handleCardChange(index, 'definition', e.target.value)}
                       className="bg-background"
                       required
                     />
                   </div>
+                </div>
+
+                {/* Câu ví dụ tùy chọn */}
+                <div className="mt-3 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs uppercase font-semibold tracking-wider text-muted-foreground">
+                      Câu ví dụ ngữ cảnh (Tùy chọn - Dùng đục lỗ khi thi)
+                    </label>
+                    <span className="text-[11px] text-muted-foreground">
+                      Mẹo: Dùng [từ] để chỉ định ô đục lỗ (VD: 老师，[你好]！)
+                    </span>
+                  </div>
+                  <Input
+                    placeholder="VD: It was pure [serendipity]... hoặc 老师，[你好]！"
+                    value={card.example_sentence || ''}
+                    onChange={(e) => handleCardChange(index, 'example_sentence', e.target.value)}
+                    className="bg-background text-sm"
+                  />
                 </div>
               </CardContent>
             </Card>
@@ -297,19 +338,19 @@ export default function EditSetPage({ params }: { params: Promise<{ id: string }
             onClick={handleAddCard}
             className="w-full py-6 border-dashed border-2 border-border hover:border-indigo-500 hover:text-indigo-600 font-semibold gap-2 transition"
           >
-            <Plus className="size-5" />
-            + THÊM THẺ MỚI
+            <Plus className="size-5" /> Thêm thẻ mới
           </Button>
         </div>
 
-        <div className="flex justify-end pt-4 border-t border-border">
+        <div className="flex justify-end pt-4">
           <Button
             type="submit"
             disabled={loading}
             size="lg"
-            className="bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white font-semibold px-8 shadow-lg shadow-indigo-500/25"
+            className="bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white font-semibold shadow-lg shadow-indigo-500/25 px-8"
           >
-            {loading ? <Loader2 className="size-5 animate-spin" /> : 'Lưu thay đổi'}
+            {loading ? <Loader2 className="size-4 animate-spin mr-2" /> : null}
+            Lưu thay đổi
           </Button>
         </div>
       </form>
