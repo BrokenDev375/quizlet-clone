@@ -7,12 +7,13 @@ import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
-import { Sparkles, Mail, Lock, User, AlertCircle, ArrowRight, Loader2, CheckCircle2 } from 'lucide-react'
+import { Sparkles, Mail, Lock, User, AlertCircle, ArrowRight, Loader2, CheckCircle2, Eye, EyeOff } from 'lucide-react'
 
 export default function SignupPage() {
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
@@ -25,6 +26,9 @@ export default function SignupPage() {
     setErrorMsg(null)
     setSuccessMsg(null)
 
+    const cleanEmail = email.trim().toLowerCase()
+    const cleanName = fullName.trim()
+
     if (password.length < 6) {
       setErrorMsg('Mật khẩu phải có ít nhất 6 ký tự')
       setLoading(false)
@@ -32,52 +36,55 @@ export default function SignupPage() {
     }
 
     try {
-      // 1. Try server-side API first
+      // 1. Thử đăng ký trực tiếp qua Supabase Client SDK
+      const { data: clientData, error: clientError } = await supabase.auth.signUp({
+        email: cleanEmail,
+        password,
+        options: {
+          data: {
+            full_name: cleanName,
+            username: cleanEmail.split('@')[0] + '_' + Math.random().toString(36).substring(2, 6),
+          },
+        },
+      })
+
+      if (!clientError && clientData?.session) {
+        window.location.href = '/dashboard'
+        return
+      }
+
+      if (!clientError && clientData?.user) {
+        setSuccessMsg('Đăng ký thành công! Bạn có thể đăng nhập ngay.')
+        setLoading(false)
+        return
+      }
+
+      // 2. Server-side API fallback
       const res = await fetch('/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email: email.trim(),
+          email: cleanEmail,
           password,
-          fullName: fullName.trim(),
+          fullName: cleanName,
         }),
       })
 
       const result = await res.json()
 
-      if (!res.ok || result.error) {
-        setErrorMsg(result.error || 'Đăng ký thất bại')
-      } else if (result.session) {
-        router.push('/dashboard')
-        router.refresh()
-      } else {
+      if (res.ok && result.session) {
+        try {
+          await supabase.auth.setSession(result.session)
+        } catch (e) {}
+        window.location.href = '/dashboard'
+        return
+      } else if (res.ok) {
         setSuccessMsg('Đăng ký thành công! Bạn có thể đăng nhập ngay bây giờ.')
+      } else {
+        setErrorMsg(result.error || clientError?.message || 'Đăng ký thất bại')
       }
     } catch (err: any) {
-      // 2. Fallback to client SDK if API route fails
-      try {
-        const { data, error } = await supabase.auth.signUp({
-          email: email.trim(),
-          password,
-          options: {
-            data: {
-              full_name: fullName,
-              username: email.split('@')[0] + '_' + Math.random().toString(36).substring(2, 6),
-            },
-          },
-        })
-
-        if (error) {
-          setErrorMsg(error.message)
-        } else if (data.session) {
-          router.push('/dashboard')
-          router.refresh()
-        } else {
-          setSuccessMsg('Đăng ký thành công! Bạn có thể đăng nhập ngay.')
-        }
-      } catch (fallbackErr: any) {
-        setErrorMsg('Không thể kết nối đến máy chủ. Vui lòng thử lại sau.')
-      }
+      setErrorMsg('Không thể kết nối đến máy chủ. Vui lòng thử lại sau.')
     } finally {
       setLoading(false)
     }
@@ -86,14 +93,19 @@ export default function SignupPage() {
   const handleGoogleSignup = async () => {
     setLoading(true)
     setErrorMsg(null)
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-      },
-    })
-    if (error) {
-      setErrorMsg(error.message)
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+        },
+      })
+      if (error) {
+        setErrorMsg(error.message)
+        setLoading(false)
+      }
+    } catch (err: any) {
+      setErrorMsg('Lỗi khi đăng ký bằng Google: ' + err.message)
       setLoading(false)
     }
   }
@@ -177,8 +189,11 @@ export default function SignupPage() {
                   placeholder="Nguyễn Văn A"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
+                  autoCorrect="off"
+                  spellCheck="false"
                   required
                   disabled={loading}
+                  className="h-10 text-sm"
                 />
               </div>
 
@@ -192,8 +207,13 @@ export default function SignupPage() {
                   placeholder="name@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck="false"
+                  inputMode="email"
                   required
                   disabled={loading}
+                  className="h-10 text-sm"
                 />
               </div>
 
@@ -202,14 +222,28 @@ export default function SignupPage() {
                   <Lock className="size-3.5" />
                   Mật khẩu
                 </label>
-                <Input
-                  type="password"
-                  placeholder="Tối thiểu 6 ký tự"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  disabled={loading}
-                />
+                <div className="relative">
+                  <Input
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="Tối thiểu 6 ký tự"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck="false"
+                    required
+                    disabled={loading}
+                    className="h-10 text-sm pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-1"
+                    tabIndex={-1}
+                  >
+                    {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                  </button>
+                </div>
               </div>
 
               <Button

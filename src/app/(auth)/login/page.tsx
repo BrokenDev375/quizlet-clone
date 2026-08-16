@@ -7,11 +7,12 @@ import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
-import { Sparkles, Mail, Lock, AlertCircle, ArrowRight, Loader2 } from 'lucide-react'
+import { Sparkles, Mail, Lock, AlertCircle, ArrowRight, Loader2, Eye, EyeOff } from 'lucide-react'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const router = useRouter()
@@ -22,38 +23,56 @@ export default function LoginPage() {
     setLoading(true)
     setErrorMsg(null)
 
+    const cleanEmail = email.trim().toLowerCase()
+    const cleanPassword = password
+
+    if (!cleanEmail || !cleanPassword) {
+      setErrorMsg('Vui lòng nhập đầy đủ email và mật khẩu')
+      setLoading(false)
+      return
+    }
+
     try {
-      // 1. Try server-side API first (bypasses browser adblock / CORS)
+      // 1. Thử đăng nhập trực tiếp qua Supabase Client SDK (Lưu Session & LocalStorage chuẩn mobile)
+      const { data: clientData, error: clientError } = await supabase.auth.signInWithPassword({
+        email: cleanEmail,
+        password: cleanPassword,
+      })
+
+      if (!clientError && clientData?.session) {
+        // Đăng nhập thành công qua SDK
+        window.location.href = '/dashboard'
+        return
+      }
+
+      // 2. Nếu Client SDK bị chặn bởi trình duyệt mobile, gọi Server-Side API fallback
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), password }),
+        body: JSON.stringify({ email: cleanEmail, password: cleanPassword }),
       })
 
       const result = await res.json()
 
-      if (!res.ok || result.error) {
-        setErrorMsg(result.error || 'Đăng nhập thất bại')
-      } else {
-        router.push('/dashboard')
-        router.refresh()
+      if (res.ok && result.session) {
+        // Đồng bộ session vào client SDK
+        try {
+          await supabase.auth.setSession(result.session)
+        } catch (e) {}
+        window.location.href = '/dashboard'
+        return
+      }
+
+      if (result.error || clientError) {
+        const raw = result.error || clientError?.message || ''
+        if (raw.includes('Invalid login credentials') || raw.includes('invalid_grant')) {
+          setErrorMsg('Email hoặc mật khẩu không chính xác. Hãy kiểm tra lại chữ hoa/thường.')
+        } else {
+          setErrorMsg(raw || 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.')
+        }
       }
     } catch (err: any) {
-      // 2. Fallback to client SDK if API route fails
-      try {
-        const { error } = await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password,
-        })
-        if (error) {
-          setErrorMsg(error.message === 'Invalid login credentials' ? 'Email hoặc mật khẩu không chính xác' : error.message)
-        } else {
-          router.push('/dashboard')
-          router.refresh()
-        }
-      } catch (fallbackErr: any) {
-        setErrorMsg('Không thể kết nối đến máy chủ. Vui lòng kiểm tra lại kết nối mạng.')
-      }
+      setErrorMsg('Không thể kết nối đến máy chủ. Vui lòng kiểm tra kết nối mạng của bạn.')
     } finally {
       setLoading(false)
     }
@@ -62,14 +81,19 @@ export default function LoginPage() {
   const handleGoogleLogin = async () => {
     setLoading(true)
     setErrorMsg(null)
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-      },
-    })
-    if (error) {
-      setErrorMsg(error.message)
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+        },
+      })
+      if (error) {
+        setErrorMsg(error.message)
+        setLoading(false)
+      }
+    } catch (err: any) {
+      setErrorMsg('Không thể đăng nhập bằng Google: ' + err.message)
       setLoading(false)
     }
   }
@@ -146,8 +170,13 @@ export default function LoginPage() {
                   placeholder="name@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck="false"
+                  inputMode="email"
                   required
                   disabled={loading}
+                  className="h-10 text-sm"
                 />
               </div>
 
@@ -156,14 +185,28 @@ export default function LoginPage() {
                   <Lock className="size-3.5" />
                   Mật khẩu
                 </label>
-                <Input
-                  type="password"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  disabled={loading}
-                />
+                <div className="relative">
+                  <Input
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck="false"
+                    required
+                    disabled={loading}
+                    className="h-10 text-sm pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-1"
+                    tabIndex={-1}
+                  >
+                    {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                  </button>
+                </div>
               </div>
 
               <Button
