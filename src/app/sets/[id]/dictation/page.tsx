@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { FlashcardSet, Card as CardType } from '@/types/database.types'
 import { unpackCardContent } from '@/lib/quiz/card-serialization'
+import { getStudySession, saveStudySession } from '@/lib/quiz/study-session'
 import { checkWrittenAnswer, normalizeAnswer } from '@/lib/quiz/question-generator'
 import { isChineseText, speakMultilingualText } from '@/lib/quiz/sentence-templates'
 import { playSuccessChime, playRetryBeep } from '@/lib/quiz/speech-recognition'
@@ -78,7 +79,16 @@ export default function DictationModePage({
         .order('position', { ascending: true })
 
       if (cardsData && cardsData.length > 0) {
-        setCards(cardsData.map(unpackCardContent))
+        const unpacked = cardsData.map(unpackCardContent)
+        setCards(unpacked)
+
+        // Phục hồi tiến độ
+        try {
+          const session = await getStudySession(setId)
+          if (session && session.last_mode === 'dictation' && session.last_card_index > 0) {
+            setCurrentIndex(Math.min(session.last_card_index, unpacked.length - 1))
+          }
+        } catch (e) {}
       }
 
       setLoading(false)
@@ -136,7 +146,9 @@ export default function DictationModePage({
 
   const handleNextCard = () => {
     if (currentIndex < cards.length - 1) {
-      setCurrentIndex((prev) => prev + 1)
+      const nextIdx = currentIndex + 1
+      setCurrentIndex(nextIdx)
+      saveStudySession({ setId, mode: 'dictation', cardIndex: nextIdx })
     } else {
       setIsCompleted(true)
     }
@@ -148,6 +160,7 @@ export default function DictationModePage({
     setIsAnswered(false)
     setResultsHistory({})
     setIsCompleted(false)
+    saveStudySession({ setId, mode: 'dictation', cardIndex: 0 })
   }
 
   if (loading) {

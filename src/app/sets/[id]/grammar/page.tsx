@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { FlashcardSet, Card as CardType } from '@/types/database.types'
 import { unpackCardContent } from '@/lib/quiz/card-serialization'
+import { getStudySession, saveStudySession } from '@/lib/quiz/study-session'
 import {
   generateGrammarExercises,
   GrammarExercise,
@@ -84,7 +85,21 @@ export default function GrammarPage({
       if (cardsData && cardsData.length > 0) {
         const unpacked = cardsData.map(unpackCardContent)
         setAllCards(unpacked)
-        loadBatchExercises(unpacked, 0, false)
+
+        // Phục hồi tiến độ đã lưu (nếu có)
+        try {
+          const session = await getStudySession(setId)
+          if (session && session.last_mode === 'grammar') {
+            const batch = session.last_batch_index ?? 0
+            const cardIdx = session.last_card_index ?? 0
+            setCurrentBatchIndex(batch)
+            loadBatchExercises(unpacked, batch, false, cardIdx)
+          } else {
+            loadBatchExercises(unpacked, 0, false, 0)
+          }
+        } catch (e) {
+          loadBatchExercises(unpacked, 0, false, 0)
+        }
       }
 
       setLoading(false)
@@ -97,7 +112,8 @@ export default function GrammarPage({
   const loadBatchExercises = (
     cardsList: typeof allCards,
     batchIdx: number,
-    allMode: boolean
+    allMode: boolean,
+    startCardIdx = 0
   ) => {
     let targetCards = cardsList
     if (!allMode && cardsList.length > BATCH_SIZE) {
@@ -108,7 +124,7 @@ export default function GrammarPage({
 
     const genEx = generateGrammarExercises(targetCards)
     setExercises(genEx)
-    setCurrentIndex(0)
+    setCurrentIndex(Math.min(startCardIdx, Math.max(0, genEx.length - 1)))
     setScoreCount(0)
     setIsCompleted(false)
     setSelectedTokens([])
@@ -118,12 +134,14 @@ export default function GrammarPage({
   const handleSelectBatch = (batchIdx: number) => {
     setCurrentBatchIndex(batchIdx)
     setIsAllMode(false)
-    loadBatchExercises(allCards, batchIdx, false)
+    loadBatchExercises(allCards, batchIdx, false, 0)
+    saveStudySession({ setId, mode: 'grammar', cardIndex: 0, batchIndex: batchIdx })
   }
 
   const handleSelectAll = () => {
     setIsAllMode(true)
-    loadBatchExercises(allCards, 0, true)
+    loadBatchExercises(allCards, 0, true, 0)
+    saveStudySession({ setId, mode: 'grammar', cardIndex: 0, batchIndex: 0 })
   }
 
   // Tạo câu ngữ pháp mới bằng Gemini AI cho nhóm từ đang học
@@ -247,7 +265,9 @@ export default function GrammarPage({
 
   const handleNextQuestion = () => {
     if (currentIndex < exercises.length - 1) {
-      setCurrentIndex((prev) => prev + 1)
+      const nextIdx = currentIndex + 1
+      setCurrentIndex(nextIdx)
+      saveStudySession({ setId, mode: 'grammar', cardIndex: nextIdx, batchIndex: currentBatchIndex })
     } else {
       setIsCompleted(true)
     }
@@ -260,12 +280,14 @@ export default function GrammarPage({
       const nextBatch = currentBatchIndex + 1
       setCurrentBatchIndex(nextBatch)
       setIsAllMode(false)
-      loadBatchExercises(allCards, nextBatch, false)
+      loadBatchExercises(allCards, nextBatch, false, 0)
+      saveStudySession({ setId, mode: 'grammar', cardIndex: 0, batchIndex: nextBatch })
     }
   }
 
   const handleRestartCurrentBatch = () => {
-    loadBatchExercises(allCards, currentBatchIndex, isAllMode)
+    loadBatchExercises(allCards, currentBatchIndex, isAllMode, 0)
+    saveStudySession({ setId, mode: 'grammar', cardIndex: 0, batchIndex: currentBatchIndex })
   }
 
   if (loading) {

@@ -169,6 +169,37 @@ create policy "Users can delete their own progress"
   on public.study_progress for delete
   using (auth.uid() = user_id);
 
+-- 5. SET STUDY SESSIONS TABLE (Track where user left off)
+create table if not exists public.set_study_sessions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  set_id uuid references public.sets(id) on delete cascade not null,
+  last_mode text default 'flashcard',
+  last_card_index int default 0,
+  last_batch_index int default 0,
+  updated_at timestamptz default now(),
+  constraint unique_user_set unique (user_id, set_id)
+);
+
+alter table public.set_study_sessions enable row level security;
+
+-- SET STUDY SESSIONS POLICIES
+create policy "Users can view their own study sessions"
+  on public.set_study_sessions for select
+  using (auth.uid() = user_id);
+
+create policy "Users can insert their own study sessions"
+  on public.set_study_sessions for insert
+  with check (auth.uid() = user_id);
+
+create policy "Users can update their own study sessions"
+  on public.set_study_sessions for update
+  using (auth.uid() = user_id);
+
+create policy "Users can delete their own study sessions"
+  on public.set_study_sessions for delete
+  using (auth.uid() = user_id);
+
 -- ==========================================
 -- SAMPLE DATA (Optional for testing)
 -- ==========================================

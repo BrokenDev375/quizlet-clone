@@ -4,8 +4,9 @@ import { useEffect, useState, use } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { FlashcardSet, Card as CardType } from '@/types/database.types'
+import { FlashcardSet, Card as CardType, SetStudySession } from '@/types/database.types'
 import { unpackCardContent } from '@/lib/quiz/card-serialization'
+import { getStudySession, saveStudySession, clearStudySession } from '@/lib/quiz/study-session'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
@@ -31,7 +32,11 @@ import {
   Calendar,
   Lock,
   Globe,
-  Trash2
+  Trash2,
+  Sparkles,
+  Play,
+  RotateCcw,
+  ArrowRight,
 } from 'lucide-react'
 
 export default function SetDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -46,6 +51,7 @@ export default function SetDetailPage({ params }: { params: Promise<{ id: string
   const [user, setUser] = useState<any>(null)
   const [isShuffled, setIsShuffled] = useState(false)
   const [flippedSide, setFlippedSide] = useState<'term' | 'definition'>('term') // start with term
+  const [savedSession, setSavedSession] = useState<SetStudySession | null>(null)
   const router = useRouter()
   const supabase = createClient()
 
@@ -79,7 +85,19 @@ export default function SetDetailPage({ params }: { params: Promise<{ id: string
         .order('position', { ascending: true })
 
       if (cardsData) {
-        setCards(cardsData.map(unpackCardContent))
+        const unpackedCards = cardsData.map(unpackCardContent)
+        setCards(unpackedCards)
+
+        // Lấy tiến độ học gần nhất (LocalStorage + Supabase)
+        try {
+          const session = await getStudySession(setId)
+          if (session && session.last_card_index > 0) {
+            setSavedSession(session)
+            if (session.last_mode === 'flashcard') {
+              setCurrentIndex(Math.min(session.last_card_index, unpackedCards.length - 1))
+            }
+          }
+        } catch (e) {}
       }
 
       setLoading(false)
@@ -107,15 +125,19 @@ export default function SetDetailPage({ params }: { params: Promise<{ id: string
 
   const handleNext = () => {
     if (currentIndex < cards.length - 1) {
+      const nextIdx = currentIndex + 1
       setIsFlipped(false)
-      setCurrentIndex((prev) => prev + 1)
+      setCurrentIndex(nextIdx)
+      saveStudySession({ setId, mode: 'flashcard', cardIndex: nextIdx })
     }
   }
 
   const handlePrev = () => {
     if (currentIndex > 0) {
+      const prevIdx = currentIndex - 1
       setIsFlipped(false)
-      setCurrentIndex((prev) => prev - 1)
+      setCurrentIndex(prevIdx)
+      saveStudySession({ setId, mode: 'flashcard', cardIndex: prevIdx })
     }
   }
 
@@ -125,6 +147,7 @@ export default function SetDetailPage({ params }: { params: Promise<{ id: string
     setCurrentIndex(0)
     setIsFlipped(false)
     setIsShuffled(true)
+    saveStudySession({ setId, mode: 'flashcard', cardIndex: 0 })
   }
 
   const handleSpeak = (text: string, e?: React.MouseEvent) => {
@@ -216,6 +239,59 @@ export default function SetDetailPage({ params }: { params: Promise<{ id: string
           </div>
         )}
       </div>
+
+      {/* Resume Learning Hero Banner */}
+      {savedSession && savedSession.last_card_index > 0 && (
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-indigo-500/15 via-purple-500/15 to-pink-500/15 border border-indigo-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md animate-in fade-in">
+          <div className="flex items-center gap-3">
+            <div className="size-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-md">
+              <Sparkles className="size-5" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-foreground flex items-center gap-2">
+                <span>Tiếp tục tiến độ học trước đó</span>
+                <Badge variant="outline" className="text-[10px] uppercase font-bold border-indigo-500/40 text-indigo-600 dark:text-indigo-400">
+                  {savedSession.last_mode}
+                </Badge>
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Bạn đang dừng lại ở <span className="font-bold text-foreground">Thẻ {savedSession.last_card_index + 1}</span> / {cards.length} thẻ
+                {savedSession.last_batch_index ? ` (Phần ${savedSession.last_batch_index + 1})` : ''}.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+            <Button
+              size="sm"
+              onClick={() => {
+                if (savedSession.last_mode === 'flashcard') {
+                  setCurrentIndex(Math.min(savedSession.last_card_index, cards.length - 1))
+                  document.getElementById('flashcard-arena')?.scrollIntoView({ behavior: 'smooth' })
+                } else {
+                  router.push(`/sets/${setId}/${savedSession.last_mode}`)
+                }
+              }}
+              className="gap-1.5 text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-md shadow-indigo-500/25"
+            >
+              <Play className="size-3.5 fill-current" /> Tiếp tục ngay
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={async () => {
+                await clearStudySession(setId)
+                setSavedSession(null)
+                setCurrentIndex(0)
+              }}
+              className="text-xs text-muted-foreground hover:text-foreground"
+              title="Xóa tiến độ và học lại từ đầu"
+            >
+              <RotateCcw className="size-3.5" />
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* OpenQuiz Style Skill Learning Modes Navigation Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 gap-3">

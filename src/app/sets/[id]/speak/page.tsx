@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { FlashcardSet, Card as CardType } from '@/types/database.types'
 import { unpackCardContent } from '@/lib/quiz/card-serialization'
+import { getStudySession, saveStudySession } from '@/lib/quiz/study-session'
 import {
   scorePronunciation,
   scoreMultipleTranscripts,
@@ -80,7 +81,16 @@ export default function SpeakPracticePage({
         .order('position', { ascending: true })
 
       if (cardsData && cardsData.length > 0) {
-        setCards(cardsData.map(unpackCardContent))
+        const unpacked = cardsData.map(unpackCardContent)
+        setCards(unpacked)
+
+        // Phục hồi tiến độ
+        try {
+          const session = await getStudySession(setId)
+          if (session && session.last_mode === 'speak' && session.last_card_index > 0) {
+            setCurrentIndex(Math.min(session.last_card_index, unpacked.length - 1))
+          }
+        } catch (e) {}
       }
 
       setLoading(false)
@@ -212,9 +222,11 @@ export default function SpeakPracticePage({
 
   const handleNextCard = () => {
     if (currentIndex < cards.length - 1) {
-      setCurrentIndex((prev) => prev + 1)
+      const nextIdx = currentIndex + 1
+      setCurrentIndex(nextIdx)
       setScoreResult(null)
       setIsListening(false)
+      saveStudySession({ setId, mode: 'speak', cardIndex: nextIdx })
     } else {
       setIsCompleted(true)
     }
@@ -222,9 +234,11 @@ export default function SpeakPracticePage({
 
   const handlePrevCard = () => {
     if (currentIndex > 0) {
-      setCurrentIndex((prev) => prev - 1)
+      const prevIdx = currentIndex - 1
+      setCurrentIndex(prevIdx)
       setScoreResult(null)
       setIsListening(false)
+      saveStudySession({ setId, mode: 'speak', cardIndex: prevIdx })
     }
   }
 
@@ -233,6 +247,7 @@ export default function SpeakPracticePage({
     setScoreResult(null)
     setResultsHistory({})
     setIsCompleted(false)
+    saveStudySession({ setId, mode: 'speak', cardIndex: 0 })
   }
 
   if (loading) {
