@@ -29,6 +29,8 @@ import {
   Sliders,
   Filter,
   ArrowRight,
+  HelpCircle,
+  Flame,
 } from 'lucide-react'
 
 export default function TestModePage({
@@ -53,6 +55,7 @@ export default function TestModePage({
     'mc_def_to_term',
     'true_false',
     'written',
+    'cloze_fill_blank',
   ])
 
   // Results State
@@ -123,7 +126,11 @@ export default function TestModePage({
   const toggleQuestionType = (type: QuestionType) => {
     if (enabledTypes.includes(type)) {
       if (enabledTypes.length > 1) {
-        setEnabledTypes(enabledTypes.filter((t) => t !== type))
+        const nextTypes = enabledTypes.filter((t) => t !== type)
+        setEnabledTypes(nextTypes)
+        // Tự động điều chỉnh số câu nếu vượt quá max
+        const newMax = allCards.length * nextTypes.length
+        if (questionCount > newMax) setQuestionCount(newMax)
       }
     } else {
       setEnabledTypes([...enabledTypes, type])
@@ -138,7 +145,7 @@ export default function TestModePage({
       const userAns = answers[q.id] || ''
       let isCorrect = false
 
-      if (q.type === 'written') {
+      if (q.type === 'written' || q.type === 'cloze_fill_blank') {
         isCorrect = checkWrittenAnswer(userAns, q.targetAnswer)
       } else if (q.type === 'true_false') {
         isCorrect = userAns.toLowerCase() === q.targetAnswer.toLowerCase()
@@ -200,11 +207,25 @@ export default function TestModePage({
   // MÀN HÌNH 1: THIẾT LẬP BÀI THI TÙY BIẾN (TEST CONFIGURATION SCREEN)
   // =========================================================================
   if (isConfiguring) {
+    const maxUniqueQuestions = allCards.length * enabledTypes.length
+
     const quickCounts = [
-      { count: 10, label: '10 câu (Nhanh)' },
-      { count: 20, label: '20 câu (Tiêu chuẩn)' },
-      { count: allCards.length, label: `${allCards.length} câu (1 lượt toàn bộ)` },
-      { count: allCards.length * 2, label: `${allCards.length * 2} câu (Đa dạng 2 chiều)` },
+      ...(maxUniqueQuestions >= 10 && allCards.length !== 10
+        ? [{ count: Math.min(10, maxUniqueQuestions), label: '10 câu (Nhanh)' }]
+        : []),
+      { count: Math.min(allCards.length, maxUniqueQuestions), label: `Mỗi từ 1 câu (${allCards.length} câu)` },
+      ...(maxUniqueQuestions >= allCards.length * 2
+        ? [
+            {
+              count: allCards.length * 2,
+              label: `Mỗi từ 2 dạng (${allCards.length * 2} câu)`,
+            },
+          ]
+        : []),
+      {
+        count: maxUniqueQuestions,
+        label: `Tối đa tất cả ${enabledTypes.length} dạng không trùng (${maxUniqueQuestions} câu)`,
+      },
     ]
 
     return (
@@ -238,13 +259,19 @@ export default function TestModePage({
           <CardContent className="p-6 sm:p-8 space-y-8">
             {/* 1. Chọn số lượng câu hỏi */}
             <div className="space-y-3">
-              <label className="text-sm font-bold uppercase tracking-wider text-muted-foreground">
-                1. Số lượng câu hỏi trong đề thi
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-bold uppercase tracking-wider text-muted-foreground">
+                  1. Số lượng câu hỏi trong đề thi
+                </label>
+                <Badge variant="outline" className="text-xs font-semibold border-indigo-500/30 text-indigo-600 dark:text-indigo-400">
+                  Tối đa không trùng: {maxUniqueQuestions} câu
+                </Badge>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {quickCounts.map((item) => (
+                {quickCounts.map((item, idx) => (
                   <button
-                    key={item.count}
+                    key={idx}
                     type="button"
                     onClick={() => setQuestionCount(item.count)}
                     className={`p-3.5 rounded-xl border text-left font-medium text-sm transition-all duration-200 flex items-center justify-between ${
@@ -260,16 +287,19 @@ export default function TestModePage({
               </div>
 
               <div className="flex items-center gap-3 pt-2">
-                <span className="text-xs text-muted-foreground">Hoặc nhập số câu:</span>
+                <span className="text-xs text-muted-foreground">Hoặc nhập số câu tự chọn:</span>
                 <Input
                   type="number"
                   min={1}
-                  max={Math.max(100, allCards.length * 4)}
+                  max={maxUniqueQuestions}
                   value={questionCount}
-                  onChange={(e) => setQuestionCount(Math.max(1, parseInt(e.target.value) || 1))}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value) || 1
+                    setQuestionCount(Math.min(Math.max(1, val), maxUniqueQuestions))
+                  }}
                   className="w-28 h-9 text-sm font-semibold"
                 />
-                <span className="text-xs text-muted-foreground">(Tối đa {Math.max(100, allCards.length * 4)} câu)</span>
+                <span className="text-xs text-muted-foreground">(Tối đa {maxUniqueQuestions} câu)</span>
               </div>
             </div>
 
@@ -293,12 +323,17 @@ export default function TestModePage({
                   {
                     type: 'true_false' as QuestionType,
                     title: 'Đúng hay Sai?',
-                    desc: 'Phán đoán độ chính xác cặp từ',
+                    desc: 'Phán đoán phản xạ cặp từ',
                   },
                   {
                     type: 'written' as QuestionType,
-                    title: 'Tự luận / Điền từ',
+                    title: 'Tự luận / Nhớ từ',
                     desc: 'Tự gõ chính xác từ vựng',
+                  },
+                  {
+                    type: 'cloze_fill_blank' as QuestionType,
+                    title: 'Điền vào chỗ trống trong câu',
+                    desc: 'Điền từ vào câu ngữ cảnh có gợi ý',
                   },
                 ].map((item) => {
                   const isEnabled = enabledTypes.includes(item.type)
@@ -337,7 +372,7 @@ export default function TestModePage({
               onClick={handleStartTest}
               className="w-full h-12 text-base font-semibold bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white shadow-xl shadow-indigo-500/25 gap-2"
             >
-              <Sparkles className="size-5" /> Bắt đầu làm bài thi ({questionCount} câu)
+              <Sparkles className="size-5" /> Bắt đầu làm bài thi ({Math.min(questionCount, maxUniqueQuestions)} câu không trùng)
             </Button>
           </CardContent>
         </Card>
@@ -487,6 +522,14 @@ export default function TestModePage({
                     </div>
                   )}
 
+                  {q.type === 'cloze_fill_blank' && (
+                    <div className="text-xs text-muted-foreground italic">
+                      {q.clozePrefix}
+                      <span className="font-bold not-italic text-foreground">{q.prompt}</span>
+                      {q.clozeSuffix} (Gợi ý: {q.letterHint})
+                    </div>
+                  )}
+
                   <div className="pt-2 border-t border-border/40 grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
                     <div>
                       <span className="text-xs text-muted-foreground block">Bạn trả lời:</span>
@@ -592,7 +635,9 @@ export default function TestModePage({
                 {/* Question Prompt */}
                 <div className="space-y-1">
                   <div className="text-xs font-bold uppercase text-muted-foreground">
-                    {q.type === 'mc_def_to_term' || q.type === 'written' ? 'Định nghĩa:' : 'Thuật ngữ:'}
+                    {q.type === 'mc_def_to_term' || q.type === 'written' || q.type === 'cloze_fill_blank'
+                      ? 'Định nghĩa:'
+                      : 'Thuật ngữ:'}
                   </div>
                   <div className="text-xl sm:text-2xl font-extrabold text-foreground leading-snug">
                     {q.prompt}
@@ -604,6 +649,17 @@ export default function TestModePage({
                         Định nghĩa hiển thị:
                       </span>
                       <span className="text-base font-medium text-foreground">{q.tfDisplayDef}</span>
+                    </div>
+                  )}
+
+                  {q.type === 'cloze_fill_blank' && (
+                    <div className="mt-3 p-3 rounded-xl bg-indigo-500/5 border border-indigo-500/20 space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-semibold text-indigo-600 dark:text-indigo-400">Gợi ý độ dài:</span>
+                        <Badge variant="outline" className="font-mono text-xs border-indigo-500/30">
+                          {q.letterHint}
+                        </Badge>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -661,15 +717,19 @@ export default function TestModePage({
                   </div>
                 )}
 
-                {/* 3. Tự luận / Điền từ */}
-                {q.type === 'written' && (
+                {/* 3. Tự luận / Điền từ vào chỗ trống */}
+                {(q.type === 'written' || q.type === 'cloze_fill_blank') && (
                   <div className="pt-1">
                     <Input
                       type="text"
-                      placeholder="Gõ câu trả lời chính xác..."
+                      placeholder={
+                        q.type === 'cloze_fill_blank'
+                          ? 'Điền từ tương ứng...'
+                          : 'Gõ câu trả lời chính xác...'
+                      }
                       value={userAns}
                       onChange={(e) => handleSelectAnswer(q.id, e.target.value)}
-                      className="h-12 text-base px-4 rounded-xl border-border focus-visible:ring-indigo-500"
+                      className="h-12 text-base px-4 rounded-xl border-border focus-visible:ring-indigo-500 font-medium"
                     />
                   </div>
                 )}

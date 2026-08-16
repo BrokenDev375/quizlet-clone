@@ -5,6 +5,7 @@ export type QuestionType =
   | 'mc_def_to_term'
   | 'true_false'
   | 'written'
+  | 'cloze_fill_blank'
 
 export type CardMasteryLevel = 'new' | 'learning' | 'mastered'
 
@@ -26,6 +27,9 @@ export interface QuizQuestion {
   options?: string[]
   tfDisplayDef?: string
   isActuallyTrue?: boolean
+  clozePrefix?: string
+  clozeSuffix?: string
+  letterHint?: string
   userResponse?: string
   isCorrect?: boolean
 }
@@ -45,7 +49,7 @@ export function normalizeAnswer(text: string): string {
 }
 
 /**
- * So khớp câu trả lời tự luận
+ * So khớp câu trả lời tự luận và điền chỗ trống
  */
 export function checkWrittenAnswer(userInput: string, targetAnswer: string): boolean {
   const normUser = normalizeAnswer(userInput)
@@ -66,7 +70,20 @@ export function checkWrittenAnswer(userInput: string, targetAnswer: string): boo
 }
 
 /**
- * Sinh 1 câu hỏi cụ thể cho 1 thẻ flashcard
+ * Tạo gợi ý ký tự (Letter Scaffolding) ví dụ: "S _ _ _ _ _ _ y" cho từ "Serendipity"
+ */
+export function generateLetterHint(term: string): string {
+  const clean = term.trim()
+  if (clean.length <= 2) return `${clean.length} ký tự`
+  if (clean.length <= 4) return `${clean[0]} _ _ ${clean[clean.length - 1]}`
+  
+  // Từ 5 ký tự trở lên: hiển thị chữ cái đầu, chữ cái cuối và độ dài
+  const middle = ' _ '.repeat(clean.length - 2)
+  return `${clean[0]}${middle}${clean[clean.length - 1]} (${clean.length} chữ cái)`
+}
+
+/**
+ * Sinh 1 câu hỏi cụ thể cho 1 thẻ flashcard theo đúng dạng
  */
 export function generateQuestionForCard(
   card: CardType,
@@ -93,7 +110,7 @@ export function generateQuestionForCard(
         card,
         type: 'mc_term_to_def',
         prompt: card.term,
-        promptTypeLabel: 'Chọn định nghĩa đúng',
+        promptTypeLabel: 'Trắc nghiệm xuôi: Chọn định nghĩa',
         targetAnswer: card.definition,
         options,
       }
@@ -115,7 +132,7 @@ export function generateQuestionForCard(
         card,
         type: 'mc_def_to_term',
         prompt: card.definition,
-        promptTypeLabel: 'Chọn thuật ngữ tương ứng',
+        promptTypeLabel: 'Trắc nghiệm ngược: Chọn thuật ngữ',
         targetAnswer: card.term,
         options,
       }
@@ -135,7 +152,7 @@ export function generateQuestionForCard(
         card,
         type: 'true_false',
         prompt: card.term,
-        promptTypeLabel: 'Đúng hay Sai?',
+        promptTypeLabel: 'Phán đoán phản xạ: Đúng hay Sai?',
         targetAnswer: isActuallyTrue ? 'true' : 'false',
         tfDisplayDef: displayDef,
         isActuallyTrue,
@@ -149,8 +166,25 @@ export function generateQuestionForCard(
         card,
         type: 'written',
         prompt: card.definition,
-        promptTypeLabel: 'Nhập thuật ngữ chính xác',
+        promptTypeLabel: 'Tự luận: Gõ thuật ngữ chính xác',
         targetAnswer: card.term,
+      }
+    }
+
+    case 'cloze_fill_blank': {
+      // DẠNG MỚI: Điền từ vào chỗ trống ngữ cảnh kèm gợi ý ký tự
+      const hint = generateLetterHint(card.term)
+      
+      return {
+        id: qId,
+        card,
+        type: 'cloze_fill_blank',
+        prompt: card.definition,
+        promptTypeLabel: 'Điền từ vào chỗ trống trong câu',
+        targetAnswer: card.term,
+        clozePrefix: 'Điền từ tương ứng với định nghĩa: "',
+        clozeSuffix: '" vào ô bên dưới',
+        letterHint: hint,
       }
     }
   }
@@ -158,21 +192,18 @@ export function generateQuestionForCard(
 
 /**
  * Sinh bộ câu hỏi theo vòng học thích ứng (Adaptive Spaced Repetition Queue)
- * Mỗi vòng lấy một nhóm thẻ (batch) và chọn dạng câu hỏi phù hợp với level hiện tại của thẻ
  */
 export function generateAdaptiveLearnBatch(
   allCards: CardType[],
   progressMap: Record<string, CardProgressState>,
-  batchSize = 5
+  batchSize = 6
 ): QuizQuestion[] {
-  // Lọc các thẻ chưa đạt 'mastered'
   const unmasteredCards = allCards.filter(
     (c) => progressMap[c.id]?.level !== 'mastered'
   )
 
   if (unmasteredCards.length === 0) return []
 
-  // Ưu tiên các thẻ đang học (learning) trước, sau đó đến thẻ mới (new)
   const sorted = [...unmasteredCards].sort((a, b) => {
     const stateA = progressMap[a.id] || { level: 'new', correctStreak: 0 }
     const stateB = progressMap[b.id] || { level: 'new', correctStreak: 0 }
@@ -194,16 +225,16 @@ export function generateAdaptiveLearnBatch(
     let targetType: QuestionType = 'mc_term_to_def'
 
     if (state.level === 'new') {
-      // Lần đầu: Trắc nghiệm xuôi (dễ nhất)
       targetType = 'mc_term_to_def'
     } else if (state.level === 'learning') {
-      // Lần 2: Nếu đã làm trắc nghiệm xuôi thì nâng lên Trắc nghiệm ngược hoặc Đúng/Sai
       if (!state.testedTypes.includes('mc_def_to_term')) {
         targetType = 'mc_def_to_term'
+      } else if (!state.testedTypes.includes('cloze_fill_blank')) {
+        targetType = 'cloze_fill_blank'
       } else if (!state.testedTypes.includes('true_false')) {
         targetType = 'true_false'
       } else {
-        targetType = 'written' // Thử thách cao nhất để đạt Mastered
+        targetType = 'written'
       }
     }
 
@@ -214,8 +245,9 @@ export function generateAdaptiveLearnBatch(
 }
 
 /**
- * Sinh đề thi tùy biến sâu (Deep Custom Test Generator)
- * Cho phép sinh 10, 20, 40, 60, 80 hoặc 100+ câu hỏi đa dạng từ tập từ vựng gốc
+ * THUẬT TOÁN TỐI ƯU SINH ĐỀ THI UNIQUE 100%:
+ * Sinh đúng số lượng câu hỏi mà KHÔNG BAO GIỜ bị trùng lặp cặp (Thẻ, Dạng câu hỏi)
+ * Giới hạn tối đa = allCards.length * enabledTypes.length
  */
 export function generateCustomTestQuestions(
   allCards: CardType[],
@@ -227,34 +259,33 @@ export function generateCustomTestQuestions(
   if (allCards.length === 0) return []
 
   const enabledTypes =
-    config.enabledTypes.length > 0
+    config.enabledTypes && config.enabledTypes.length > 0
       ? config.enabledTypes
-      : (['mc_term_to_def', 'mc_def_to_term', 'true_false', 'written'] as QuestionType[])
+      : ([
+          'mc_term_to_def',
+          'mc_def_to_term',
+          'true_false',
+          'written',
+          'cloze_fill_blank',
+        ] as QuestionType[])
 
-  const questions: QuizQuestion[] = []
-  const totalCount = Math.max(1, config.questionCount)
+  // 1. Tạo TOÀN BỘ tổ hợp độc nhất (Card x Type)
+  const uniquePool: QuizQuestion[] = []
+  
+  allCards.forEach((card) => {
+    enabledTypes.forEach((type) => {
+      uniquePool.push(generateQuestionForCard(card, allCards, type))
+    })
+  })
 
-  // Xáo trộn thẻ ban đầu
-  let cardPool = [...allCards].sort(() => Math.random() - 0.5)
-  let cardIndex = 0
-  let typeIndex = 0
+  // 2. Xáo trộn toàn bộ tổ hợp độc nhất
+  const shuffledPool = [...uniquePool].sort(() => Math.random() - 0.5)
 
-  for (let i = 0; i < totalCount; i++) {
-    // Lấy thẻ tuần hoàn
-    const card = cardPool[cardIndex % cardPool.length]
-    cardIndex++
+  // 3. Giới hạn tối đa bằng kích thước của uniquePool
+  const finalCount = Math.min(
+    Math.max(1, config.questionCount),
+    shuffledPool.length
+  )
 
-    // Nếu đã duyệt hết 1 vòng thẻ, xáo trộn lại để tránh trùng thứ tự
-    if (cardIndex % cardPool.length === 0) {
-      cardPool = [...allCards].sort(() => Math.random() - 0.5)
-    }
-
-    // Chọn luân phiên dạng câu hỏi trong danh sách được bật
-    const qType = enabledTypes[typeIndex % enabledTypes.length]
-    typeIndex++
-
-    questions.push(generateQuestionForCard(card, allCards, qType))
-  }
-
-  return questions
+  return shuffledPool.slice(0, finalCount)
 }

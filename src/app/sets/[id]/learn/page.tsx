@@ -113,12 +113,13 @@ export default function LearnModePage({
     loadData()
   }, [setId])
 
-  // Focus input khi chuyển sang câu tự luận
+  // Focus input khi chuyển sang câu tự luận hoặc điền chỗ trống
   useEffect(() => {
     if (
       currentQueue.length > 0 &&
       currentIndex < currentQueue.length &&
-      currentQueue[currentIndex].type === 'written' &&
+      (currentQueue[currentIndex].type === 'written' ||
+        currentQueue[currentIndex].type === 'cloze_fill_blank') &&
       !isAnswered
     ) {
       setTimeout(() => {
@@ -713,8 +714,8 @@ export default function LearnModePage({
             </div>
           )}
 
-          {/* DẠNG 4: TỰ LUẬN / ĐIỀN TỪ (WRITTEN RECALL) */}
-          {currentQ.type === 'written' && (
+          {/* DẠNG 4 & 5: TỰ LUẬN / ĐIỀN TỪ VÀO CHỖ TRỐNG (WRITTEN & CLOZE) */}
+          {(currentQ.type === 'written' || currentQ.type === 'cloze_fill_blank') && (
             <form
               onSubmit={(e) => {
                 e.preventDefault()
@@ -722,15 +723,37 @@ export default function LearnModePage({
               }}
               className="space-y-4 pt-2"
             >
+              {currentQ.type === 'cloze_fill_blank' && (
+                <div className="p-4 rounded-xl bg-indigo-500/5 border border-indigo-500/20 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-indigo-600 dark:text-indigo-400">
+                      💡 Gợi ý cấu trúc từ:
+                    </span>
+                    <Badge variant="outline" className="font-mono text-xs border-indigo-500/30">
+                      {currentQ.letterHint}
+                    </Badge>
+                  </div>
+                  <div className="text-sm text-muted-foreground italic">
+                    {currentQ.clozePrefix}
+                    <span className="font-bold not-italic text-foreground">{currentQ.prompt}</span>
+                    {currentQ.clozeSuffix}
+                  </div>
+                </div>
+              )}
+
               <div className="relative">
                 <Input
                   ref={writtenInputRef}
                   type="text"
-                  placeholder="Gõ thuật ngữ chính xác..."
+                  placeholder={
+                    currentQ.type === 'cloze_fill_blank'
+                      ? 'Điền từ còn thiếu vào đây...'
+                      : 'Gõ thuật ngữ chính xác...'
+                  }
                   value={writtenInput}
                   onChange={(e) => setWrittenInput(e.target.value)}
                   disabled={isAnswered}
-                  className="h-14 text-lg px-4 rounded-xl border-border focus-visible:ring-indigo-500"
+                  className="h-14 text-lg px-4 rounded-xl border-border focus-visible:ring-indigo-500 font-medium"
                 />
               </div>
 
