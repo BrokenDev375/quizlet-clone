@@ -13,6 +13,8 @@ import {
   Brain, 
   FileCheck2, 
   Gamepad2, 
+  Mic,
+  Headphones,
   Edit3, 
   ChevronLeft, 
   ChevronRight, 
@@ -211,52 +213,82 @@ export default function SetDetailPage({ params }: { params: Promise<{ id: string
         )}
       </div>
 
-      {/* Study Modes Navigation Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      {/* OpenQuiz Style Skill Learning Modes Navigation Grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        {/* 1. Thẻ ghi nhớ */}
         <Link href={`/sets/${setId}`} className="group">
-          <div className="p-3.5 rounded-xl border-2 border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/30 flex items-center gap-3 transition shadow-xs">
-            <div className="size-10 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0">
-              <BookOpen className="size-5" />
+          <div className="p-3 rounded-2xl border-2 border-indigo-600 bg-indigo-50/60 dark:bg-indigo-950/40 flex items-center gap-2.5 transition shadow-xs">
+            <div className="size-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0">
+              <BookOpen className="size-4" />
             </div>
-            <div>
-              <p className="text-sm font-bold text-indigo-950 dark:text-indigo-200">Thẻ ghi nhớ</p>
-              <p className="text-xs text-muted-foreground">Lật thẻ 3D</p>
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-indigo-950 dark:text-indigo-200 truncate">Thẻ nhớ</p>
+              <p className="text-[11px] text-muted-foreground truncate">Lật thẻ 3D</p>
             </div>
           </div>
         </Link>
 
+        {/* 2. Speaking (Luyện nói) */}
+        <Link href={`/sets/${setId}/speak`} className="group">
+          <div className="p-3 rounded-2xl border border-border/80 bg-card hover:border-rose-500/50 hover:bg-rose-50/20 dark:hover:bg-rose-950/20 flex items-center gap-2.5 transition shadow-xs">
+            <div className="size-9 rounded-xl bg-rose-500/10 text-rose-600 flex items-center justify-center shrink-0 group-hover:bg-rose-600 group-hover:text-white transition">
+              <Mic className="size-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-bold truncate">Speaking</p>
+              <p className="text-[11px] text-muted-foreground truncate">Luyện nói AI</p>
+            </div>
+          </div>
+        </Link>
+
+        {/* 3. Nghe Chép (Dictation) */}
+        <Link href={`/sets/${setId}/dictation`} className="group">
+          <div className="p-3 rounded-2xl border border-border/80 bg-card hover:border-cyan-500/50 hover:bg-cyan-50/20 dark:hover:bg-cyan-950/20 flex items-center gap-2.5 transition shadow-xs">
+            <div className="size-9 rounded-xl bg-cyan-500/10 text-cyan-600 flex items-center justify-center shrink-0 group-hover:bg-cyan-600 group-hover:text-white transition">
+              <Headphones className="size-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-bold truncate">Nghe Chép</p>
+              <p className="text-[11px] text-muted-foreground truncate">Chính tả</p>
+            </div>
+          </div>
+        </Link>
+
+        {/* 4. Chế độ Học */}
         <Link href={`/sets/${setId}/learn`} className="group">
-          <div className="p-3.5 rounded-xl border border-border/80 bg-card hover:border-indigo-500/50 hover:bg-indigo-50/20 dark:hover:bg-indigo-950/20 flex items-center gap-3 transition">
-            <div className="size-10 rounded-lg bg-blue-500/10 text-blue-600 flex items-center justify-center shrink-0 group-hover:bg-blue-600 group-hover:text-white transition">
-              <Brain className="size-5" />
+          <div className="p-3 rounded-2xl border border-border/80 bg-card hover:border-blue-500/50 hover:bg-blue-50/20 dark:hover:bg-blue-950/20 flex items-center gap-2.5 transition shadow-xs">
+            <div className="size-9 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center shrink-0 group-hover:bg-blue-600 group-hover:text-white transition">
+              <Brain className="size-4" />
             </div>
-            <div>
-              <p className="text-sm font-bold">Chế độ Học</p>
-              <p className="text-xs text-muted-foreground">Trắc nghiệm</p>
+            <div className="min-w-0">
+              <p className="text-xs font-bold truncate">Học</p>
+              <p className="text-[11px] text-muted-foreground truncate">Thích ứng</p>
             </div>
           </div>
         </Link>
 
+        {/* 5. Kiểm tra */}
         <Link href={`/sets/${setId}/test`} className="group">
-          <div className="p-3.5 rounded-xl border border-border/80 bg-card hover:border-indigo-500/50 hover:bg-indigo-50/20 dark:hover:bg-indigo-950/20 flex items-center gap-3 transition">
-            <div className="size-10 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0 group-hover:bg-emerald-600 group-hover:text-white transition">
-              <FileCheck2 className="size-5" />
+          <div className="p-3 rounded-2xl border border-border/80 bg-card hover:border-emerald-500/50 hover:bg-emerald-50/20 dark:hover:bg-emerald-950/20 flex items-center gap-2.5 transition shadow-xs">
+            <div className="size-9 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0 group-hover:bg-emerald-600 group-hover:text-white transition">
+              <FileCheck2 className="size-4" />
             </div>
-            <div>
-              <p className="text-sm font-bold">Kiểm tra</p>
-              <p className="text-xs text-muted-foreground">Làm bài thi</p>
+            <div className="min-w-0">
+              <p className="text-xs font-bold truncate">Kiểm tra</p>
+              <p className="text-[11px] text-muted-foreground truncate">Làm bài thi</p>
             </div>
           </div>
         </Link>
 
+        {/* 6. Ghép thẻ */}
         <Link href={`/sets/${setId}/match`} className="group">
-          <div className="p-3.5 rounded-xl border border-border/80 bg-card hover:border-indigo-500/50 hover:bg-indigo-50/20 dark:hover:bg-indigo-950/20 flex items-center gap-3 transition">
-            <div className="size-10 rounded-lg bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0 group-hover:bg-amber-600 group-hover:text-white transition">
-              <Gamepad2 className="size-5" />
+          <div className="p-3 rounded-2xl border border-border/80 bg-card hover:border-amber-500/50 hover:bg-amber-50/20 dark:hover:bg-amber-950/20 flex items-center gap-2.5 transition shadow-xs">
+            <div className="size-9 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0 group-hover:bg-amber-600 group-hover:text-white transition">
+              <Gamepad2 className="size-4" />
             </div>
-            <div>
-              <p className="text-sm font-bold">Ghép thẻ</p>
-              <p className="text-xs text-muted-foreground">Trò chơi tốc độ</p>
+            <div className="min-w-0">
+              <p className="text-xs font-bold truncate">Ghép thẻ</p>
+              <p className="text-[11px] text-muted-foreground truncate">Game tốc độ</p>
             </div>
           </div>
         </Link>
