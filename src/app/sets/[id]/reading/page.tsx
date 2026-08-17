@@ -10,10 +10,11 @@ import {
   generateMultipleReadingPassages,
   ReadingPassage,
 } from '@/lib/quiz/advanced-skills'
-import { speakMultilingualText } from '@/lib/quiz/sentence-templates'
+import { speakMultilingualText, isChineseText } from '@/lib/quiz/sentence-templates'
 import { playSuccessChime, playRetryBeep } from '@/lib/quiz/speech-recognition'
+import { pinyin } from 'pinyin-pro'
 import { Button, buttonVariants } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import {
   BookOpenText,
@@ -29,6 +30,8 @@ import {
   RotateCcw,
   Trophy,
   Layers,
+  Search,
+  Languages,
 } from 'lucide-react'
 
 export default function ReadingPage({
@@ -50,9 +53,13 @@ export default function ReadingPage({
     definition: string
   } | null>(null)
   const [showTranslation, setShowTranslation] = useState(false)
+  const [showPinyin, setShowPinyin] = useState(true)
   const [selectedAnswers, setSelectedAnswers] = useState<Record<string, number>>({})
   const [quizSubmitted, setQuizSubmitted] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [lookupInput, setLookupInput] = useState('')
+  const [isGeneratingAI, setIsGeneratingAI] = useState(false)
+  const [aiError, setAiError] = useState<string | null>(null)
 
   const supabase = createClient()
   const router = useRouter()
@@ -91,6 +98,7 @@ export default function ReadingPage({
   }, [setId])
 
   const currentPassage = passages[currentPassageIdx]
+  const isZh = currentPassage ? isChineseText(currentPassage.content) : false
 
   const handleSwitchPassage = (idx: number) => {
     setCurrentPassageIdx(idx)
@@ -105,6 +113,37 @@ export default function ReadingPage({
     speakMultilingualText(wordObj.term)
   }
 
+  // Tra cứu nghĩa từ vựng bất kỳ khi bấm kính lúp
+  const handleQuickLookup = (textToFind: string) => {
+    const clean = textToFind.trim()
+    if (!clean) return
+
+    // Tìm trong danh sách thẻ của học phần
+    const foundCard = cards.find(
+      (c) =>
+        c.term.toLowerCase() === clean.toLowerCase() ||
+        clean.toLowerCase().includes(c.term.toLowerCase()) ||
+        c.term.toLowerCase().includes(clean.toLowerCase())
+    )
+
+    if (foundCard) {
+      setSelectedWord({
+        term: foundCard.term,
+        phonetic: foundCard.phonetic || (isChineseText(foundCard.term) ? pinyin(foundCard.term) : undefined),
+        definition: foundCard.definition,
+      })
+      speakMultilingualText(foundCard.term)
+    } else {
+      // Tự động sinh Pinyin cho chữ Hán nếu không khớp thẻ nào
+      setSelectedWord({
+        term: clean,
+        phonetic: isChineseText(clean) ? pinyin(clean) : undefined,
+        definition: 'Từ trong ngữ cảnh bài đọc (Bấm biểu tượng loa để nghe phát âm chuẩn)',
+      })
+      speakMultilingualText(clean)
+    }
+  }
+
   const handleSelectOption = (questionId: string, optionIndex: number) => {
     if (quizSubmitted) return
     setSelectedAnswers((prev) => ({
@@ -117,7 +156,6 @@ export default function ReadingPage({
     if (!currentPassage) return
     setQuizSubmitted(true)
 
-    // Kiểm tra số câu đúng
     let correctCount = 0
     currentPassage.questions.forEach((q) => {
       if (selectedAnswers[q.id] === q.correctIndex) {
@@ -131,9 +169,6 @@ export default function ReadingPage({
       playRetryBeep()
     }
   }
-
-  const [isGeneratingAI, setIsGeneratingAI] = useState(false)
-  const [aiError, setAiError] = useState<string | null>(null)
 
   const handleGenerateAI = async () => {
     if (!set || cards.length === 0 || isGeneratingAI) return
@@ -183,7 +218,7 @@ export default function ReadingPage({
       playSuccessChime()
     } catch (err: any) {
       console.warn('AI reading generation fallback:', err)
-      setAiError(err.message || 'Chưa cấu hình GEMINI_API_KEY')
+      setAiError(err.message || 'Lỗi khi gọi Gemini AI')
     } finally {
       setIsGeneratingAI(false)
     }
@@ -193,7 +228,7 @@ export default function ReadingPage({
     return (
       <div className="min-h-[60vh] flex flex-col items-center justify-center space-y-4">
         <div className="size-12 rounded-full border-4 border-indigo-600 border-t-transparent animate-spin" />
-        <p className="text-muted-foreground text-sm font-medium">Đang chuẩn bị kho bài Đọc hiểu phong phú...</p>
+        <p className="text-muted-foreground text-sm font-medium">Đang chuẩn bị phòng Đọc hiểu thông minh...</p>
       </div>
     )
   }
@@ -217,8 +252,36 @@ export default function ReadingPage({
     (q) => selectedAnswers[q.id] === q.correctIndex
   ).length
 
+  // Hàm render chữ Hán kèm thẻ <ruby> Pinyin phía trên
+  const renderPassageWithPinyin = (text: string) => {
+    if (!isZh || !showPinyin) {
+      return <span>{text}</span>
+    }
+
+    // Tách theo từng ký tự Hán tự
+    const chars = text.split('')
+    return (
+      <span className="leading-[2.8] sm:leading-[3.2] inline">
+        {chars.map((ch, i) => {
+          if (/[\u4e00-\u9fa5]/.test(ch)) {
+            const py = pinyin(ch)
+            return (
+              <ruby key={i} className="mx-[1px] select-text cursor-pointer hover:text-indigo-600 transition" onClick={() => handleQuickLookup(ch)}>
+                {ch}
+                <rt className="text-[11px] sm:text-xs font-normal text-indigo-600 dark:text-indigo-400 select-none pb-0.5">
+                  {py}
+                </rt>
+              </ruby>
+            )
+          }
+          return <span key={i}>{ch}</span>
+        })}
+      </span>
+    )
+  }
+
   return (
-    <div className="container max-w-3xl mx-auto py-6 px-4 space-y-8">
+    <div className="container max-w-3xl mx-auto py-6 px-4 space-y-6">
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-border/80 pb-4">
         <div className="flex items-center gap-3">
@@ -249,29 +312,42 @@ export default function ReadingPage({
             {isGeneratingAI ? (
               <>
                 <div className="size-3 rounded-full border-2 border-white border-t-transparent animate-spin" />
-                Gemini đang viết...
+                Đang viết...
               </>
             ) : (
               <>
-                <Sparkles className="size-3.5" /> ✨ Nhờ Gemini AI viết bài mới
+                <Sparkles className="size-3.5" /> ✨ AI viết bài mới
               </>
             )}
           </Button>
+
+          {/* Pinyin Toggle for Chinese */}
+          {isZh && (
+            <Button
+              variant={showPinyin ? 'secondary' : 'outline'}
+              size="sm"
+              onClick={() => setShowPinyin(!showPinyin)}
+              className="text-xs gap-1"
+            >
+              <Languages className="size-3.5 text-indigo-600" />
+              {showPinyin ? 'Pinyin: BẬT' : 'Pinyin: TẮT'}
+            </Button>
+          )}
 
           <Button
             variant="outline"
             size="sm"
             onClick={() => setShowTranslation(!showTranslation)}
-            className="text-xs gap-1.5"
+            className="text-xs gap-1"
           >
             {showTranslation ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
-            {showTranslation ? 'Ẩn bản dịch' : 'Dịch toàn bài'}
+            {showTranslation ? 'Ẩn dịch' : 'Dịch bài'}
           </Button>
 
           <Button
             size="sm"
             onClick={() => speakMultilingualText(currentPassage.content)}
-            className="text-xs gap-1.5 bg-gradient-to-r from-indigo-600 to-blue-600 text-white font-medium shadow-md shadow-indigo-500/20"
+            className="text-xs gap-1 bg-gradient-to-r from-indigo-600 to-blue-600 text-white font-medium shadow-md shadow-indigo-500/20"
           >
             <Volume2 className="size-3.5" /> Nghe
           </Button>
@@ -285,62 +361,72 @@ export default function ReadingPage({
         </div>
       )}
 
-      {/* Multi-Passage Selector Tabs */}
+      {/* Tinh gọn Bộ chọn chủ đề (Compact Horizontal Scroll Pills) */}
       {passages.length > 1 && (
-        <div className="space-y-2">
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span className="font-semibold uppercase tracking-wider flex items-center gap-1">
-              <Layers className="size-3.5" /> Chọn bài đọc chủ đề:
-            </span>
-            <span>{currentPassageIdx + 1} / {passages.length} bài</span>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            {passages.map((p, idx) => (
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none text-xs">
+          <span className="font-bold text-muted-foreground shrink-0 flex items-center gap-1 pr-1">
+            <Layers className="size-3.5 text-indigo-500" /> Chủ đề:
+          </span>
+          {passages.map((p, idx) => {
+            const isActive = currentPassageIdx === idx
+            return (
               <button
                 key={p.id}
                 type="button"
                 onClick={() => handleSwitchPassage(idx)}
-                className={`p-3 rounded-xl border text-left transition-all duration-200 ${
-                  currentPassageIdx === idx
-                    ? 'border-indigo-600 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-bold ring-2 ring-indigo-500/20 shadow-xs'
-                    : 'border-border bg-card hover:bg-muted/60 text-muted-foreground hover:text-foreground'
+                className={`py-1.5 px-3 rounded-xl font-bold whitespace-nowrap shrink-0 transition flex items-center gap-1.5 ${
+                  isActive
+                    ? 'bg-indigo-600 text-white shadow-sm ring-2 ring-indigo-500/30'
+                    : 'bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground border border-border/60'
                 }`}
               >
-                <div className="text-xs font-bold uppercase truncate">{p.genre}</div>
-                <div className="text-sm font-medium truncate text-foreground">Bài {idx + 1}</div>
+                <span>Bài {idx + 1}: {p.genre}</span>
               </button>
-            ))}
-          </div>
+            )
+          })}
         </div>
       )}
 
       {/* Main Reading Passage Card */}
       <Card className="border-border shadow-xl bg-card">
-        <CardHeader className="bg-muted/30 border-b border-border/60 pb-4">
+        <CardHeader className="bg-muted/30 border-b border-border/60 pb-3 pt-4">
           <div className="flex items-center justify-between">
-            <div className="space-y-1">
-              <Badge variant="outline" className="text-xs font-semibold border-indigo-500/30 text-indigo-600 dark:text-indigo-400">
+            <div className="space-y-0.5">
+              <Badge variant="outline" className="text-[10px] font-semibold border-indigo-500/30 text-indigo-600 dark:text-indigo-400">
                 {currentPassage.genre}
               </Badge>
-              <CardTitle className="text-xl font-bold">{currentPassage.title}</CardTitle>
+              <CardTitle className="text-lg sm:text-xl font-bold">{currentPassage.title}</CardTitle>
             </div>
 
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => speakMultilingualText(currentPassage.content)}
-              className="gap-1.5 text-xs text-indigo-600 dark:text-indigo-400 font-semibold"
-            >
-              <Volume2 className="size-4" /> Phát âm
-            </Button>
+            {/* Quick Word Lookup Input Bar with Magnifying Glass */}
+            <div className="flex items-center gap-1.5">
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Tra từ..."
+                  value={lookupInput}
+                  onChange={(e) => setLookupInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleQuickLookup(lookupInput)
+                  }}
+                  className="h-8 w-28 sm:w-36 text-xs px-2.5 pr-7 rounded-xl border border-border bg-background focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleQuickLookup(lookupInput)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-indigo-600"
+                >
+                  <Search className="size-3.5" />
+                </button>
+              </div>
+            </div>
           </div>
         </CardHeader>
 
         <CardContent className="p-6 sm:p-8 space-y-6">
-          {/* Main Passage Text */}
-          <div className="text-lg sm:text-xl font-medium text-foreground leading-loose">
-            {currentPassage.content}
+          {/* Main Passage Text with Ruby Pinyin */}
+          <div className="text-lg sm:text-xl font-medium text-foreground">
+            {renderPassageWithPinyin(currentPassage.content)}
           </div>
 
           {showTranslation && (
@@ -353,9 +439,9 @@ export default function ReadingPage({
           )}
 
           {/* Quick Target Vocabulary Inspector Bar */}
-          <div className="space-y-2 pt-2 border-t border-border/60">
-            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground block">
-              Từ vựng trọng tâm trong bài (Chạm vào từ để tra nghĩa & nghe phát âm):
+          <div className="space-y-2 pt-3 border-t border-border/60">
+            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+              <Search className="size-3 text-indigo-500" /> Chạm vào từ để tra nghĩa & nghe phát âm:
             </span>
 
             <div className="flex flex-wrap gap-2">
@@ -366,7 +452,7 @@ export default function ReadingPage({
                     key={wordObj.term}
                     type="button"
                     onClick={() => handleWordClick(wordObj)}
-                    className={`px-3.5 py-2 rounded-xl border text-sm font-semibold transition-all duration-200 flex items-center gap-1.5 ${
+                    className={`px-3 py-1.5 rounded-xl border text-xs sm:text-sm font-semibold transition-all duration-200 flex items-center gap-1.5 cursor-pointer ${
                       isSelected
                         ? 'bg-indigo-600 text-white border-indigo-600 shadow-md ring-2 ring-indigo-500/30'
                         : 'bg-indigo-500/5 hover:bg-indigo-500/10 border-indigo-500/20 text-indigo-600 dark:text-indigo-400'
@@ -380,11 +466,14 @@ export default function ReadingPage({
             </div>
           </div>
 
-          {/* Selected Word Details Popup Card */}
+          {/* Selected Word Details Popup Card with Magnifying Glass Inspector */}
           {selectedWord && (
             <div className="p-4 rounded-2xl bg-gradient-to-r from-indigo-500/10 via-card to-blue-500/10 border-2 border-indigo-500/30 space-y-2 animate-in fade-in zoom-in-95">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
+                  <div className="size-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center">
+                    <Search className="size-3.5" />
+                  </div>
                   <span className="text-lg font-black text-foreground">{selectedWord.term}</span>
                   {selectedWord.phonetic && (
                     <Badge variant="outline" className="font-mono text-xs border-indigo-500/30 bg-indigo-500/5 text-indigo-600 dark:text-indigo-400">
@@ -392,18 +481,27 @@ export default function ReadingPage({
                     </Badge>
                   )}
                 </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => speakMultilingualText(selectedWord.term)}
-                  className="gap-1 text-xs text-indigo-600 dark:text-indigo-400"
-                >
-                  <Volume2 className="size-4" /> Phát âm
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => speakMultilingualText(selectedWord.term)}
+                    className="gap-1 text-xs text-indigo-600 dark:text-indigo-400 h-8"
+                  >
+                    <Volume2 className="size-4" /> Phát âm
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedWord(null)}
+                    className="text-xs text-muted-foreground hover:text-foreground font-bold px-2 py-1"
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
               <p className="text-sm font-medium text-foreground">
-                Định nghĩa: <span className="font-bold text-indigo-600 dark:text-indigo-400">{selectedWord.definition}</span>
+                Nghĩa: <span className="font-bold text-indigo-600 dark:text-indigo-400">{selectedWord.definition}</span>
               </p>
             </div>
           )}
@@ -428,7 +526,6 @@ export default function ReadingPage({
         <div className="space-y-4">
           {currentPassage.questions.map((q, qIdx) => {
             const userChoice = selectedAnswers[q.id]
-            const isCorrect = userChoice === q.correctIndex
 
             return (
               <Card key={q.id} className="border-border bg-card">
@@ -458,25 +555,20 @@ export default function ReadingPage({
                           type="button"
                           disabled={quizSubmitted}
                           onClick={() => handleSelectOption(q.id, optIdx)}
-                          className={`p-3.5 rounded-xl border text-left text-sm transition-all duration-200 leading-snug ${btnStyle}`}
+                          className={`p-3 rounded-xl border text-left text-sm transition-all flex items-start gap-2.5 ${btnStyle}`}
                         >
-                          {opt}
+                          <span className="size-5 rounded-md bg-muted text-muted-foreground text-xs font-bold flex items-center justify-center shrink-0 border border-border/60">
+                            {optIdx + 1}
+                          </span>
+                          <span className="flex-1 leading-snug">{opt}</span>
                         </button>
                       )
                     })}
                   </div>
 
-                  {quizSubmitted && (
-                    <div
-                      className={`p-3.5 rounded-xl border text-xs leading-relaxed ${
-                        isCorrect
-                          ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300'
-                          : 'bg-destructive/10 border-destructive/30 text-destructive'
-                      }`}
-                    >
-                      <span className="font-bold block mb-1">
-                        {isCorrect ? '✅ Chính xác!' : '❌ Chưa đúng!'}
-                      </span>
+                  {quizSubmitted && q.explanation && (
+                    <div className="p-3 rounded-xl bg-muted/60 border border-border/60 text-xs text-muted-foreground">
+                      <span className="font-bold text-foreground">Giải thích: </span>
                       {q.explanation}
                     </div>
                   )}
@@ -491,33 +583,21 @@ export default function ReadingPage({
             size="lg"
             onClick={handleSubmitQuiz}
             disabled={Object.keys(selectedAnswers).length < currentPassage.questions.length}
-            className="w-full h-12 text-base font-semibold bg-gradient-to-r from-indigo-600 to-blue-600 text-white shadow-xl shadow-indigo-500/25"
+            className="w-full bg-gradient-to-r from-indigo-600 to-blue-600 text-white font-bold text-base shadow-lg shadow-indigo-500/25"
           >
-            Nộp câu trả lời Đọc hiểu ({Object.keys(selectedAnswers).length}/{currentPassage.questions.length} câu)
+            Nộp bài & Kiểm tra đáp án
           </Button>
         ) : (
-          <div className="flex gap-3">
-            <Button
-              variant="outline"
-              size="lg"
-              onClick={() => {
-                setQuizSubmitted(false)
-                setSelectedAnswers({})
-              }}
-              className="flex-1 gap-2"
-            >
-              <RotateCcw className="size-4" /> Làm lại bài này
-            </Button>
-
-            {currentPassageIdx < passages.length - 1 && (
-              <Button
-                size="lg"
-                onClick={() => handleSwitchPassage(currentPassageIdx + 1)}
-                className="flex-1 bg-indigo-600 text-white hover:bg-indigo-700 font-semibold"
-              >
-                Chuyển sang Bài {currentPassageIdx + 2} →
-              </Button>
-            )}
+          <div className="p-6 rounded-2xl bg-gradient-to-b from-card to-muted/40 border border-border text-center space-y-3">
+            <Trophy className="size-10 text-indigo-600 mx-auto" />
+            <h3 className="text-xl font-bold">
+              Kết quả: {correctAnswersCount} / {currentPassage.questions.length} câu đúng
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              {correctAnswersCount === currentPassage.questions.length
+                ? '🎉 Xuất sắc! Bạn đã hiểu toàn bộ bài đọc!'
+                : '💪 Bạn hãy xem lại phần giải thích chi tiết phía trên để rút kinh nghiệm nhé!'}
+            </p>
           </div>
         )}
       </div>

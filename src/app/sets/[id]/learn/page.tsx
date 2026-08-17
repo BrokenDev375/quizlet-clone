@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { FlashcardSet, Card as CardType } from '@/types/database.types'
 import { unpackCardContent } from '@/lib/quiz/card-serialization'
+import { getStudySession, saveStudySession, clearStudySession } from '@/lib/quiz/study-session'
 import {
   QuizQuestion,
   CardProgressState,
@@ -44,10 +45,11 @@ export default function LearnModePage({
   const setId = resolvedParams.id
 
   const [set, setSet] = useState<FlashcardSet | null>(null)
-  const [allCards, setAllCards] = useState<CardType[]>([])
+  const [allCards, setAllCards] = useState<(CardType & { phonetic?: string; example_sentence?: string })[]>([])
   const [progressMap, setProgressMap] = useState<Record<string, CardProgressState>>({})
   const [currentQueue, setCurrentQueue] = useState<QuizQuestion[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
+  const [user, setUser] = useState<any>(null)
 
   // Question Interaction State
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null)
@@ -68,9 +70,12 @@ export default function LearnModePage({
   const supabase = createClient()
   const router = useRouter()
 
-  // 1. Tải dữ liệu ban đầu
+  // 1. Tải dữ liệu ban đầu và nạp tiến độ học từ Database Supabase + LocalStorage
   useEffect(() => {
     async function loadData() {
+      const { data: { user: currentUser } } = await supabase.auth.getUser()
+      setUser(currentUser)
+
       const { data: setData } = await supabase
         .from('sets')
         .select('*')
@@ -92,23 +97,61 @@ export default function LearnModePage({
         const unpacked = cardsData.map(unpackCardContent)
         setAllCards(unpacked)
 
-        // Khởi tạo Progress Map cho từng thẻ
+        // 1.1 Đọc tiến độ từ Database Supabase (study_progress)
+        let dbProgressMap: Record<string, any> = {}
+        if (currentUser) {
+          const { data: progressRows } = await supabase
+            .from('study_progress')
+            .select('*')
+            .eq('user_id', currentUser.id)
+            .in('card_id', unpacked.map((c) => c.id))
+
+          if (progressRows && progressRows.length > 0) {
+            progressRows.forEach((row) => {
+              dbProgressMap[row.card_id] = row
+            })
+          }
+        }
+
+        // 1.2 Đọc dự phòng từ LocalStorage
+        let localProgressMap: Record<string, CardProgressState> = {}
+        if (typeof window !== 'undefined') {
+          try {
+            const rawLocal = localStorage.getItem(`quizlet_learn_progress_${setId}`)
+            if (rawLocal) localProgressMap = JSON.parse(rawLocal)
+          } catch (e) {}
+        }
+
+        // 1.3 Hợp nhất tiến độ đã học (Ưu tiên Supabase, sau đó đến LocalStorage)
         const initialMap: Record<string, CardProgressState> = {}
         unpacked.forEach((c) => {
+          const dbItem = dbProgressMap[c.id]
+          const localItem = localProgressMap[c.id]
+
+          const level = (dbItem?.status as CardMasteryLevel) || localItem?.level || 'new'
+          const correctStreak = dbItem?.correct_count ?? localItem?.correctStreak ?? 0
+          const incorrectCount = dbItem?.incorrect_count ?? localItem?.incorrectCount ?? 0
+
           initialMap[c.id] = {
             cardId: c.id,
-            level: 'new',
-            correctStreak: 0,
-            incorrectCount: 0,
-            testedTypes: [],
+            level,
+            correctStreak,
+            incorrectCount,
+            testedTypes: localItem?.testedTypes || [],
           }
         })
         setProgressMap(initialMap)
 
-        // Sinh vòng học 1
-        const firstBatch = generateAdaptiveLearnBatch(cardsData, initialMap, 6)
-        setCurrentQueue(firstBatch)
-        setCurrentIndex(0)
+        // Kiểm tra xem tất cả các từ đã mastered chưa
+        const masteredCount = Object.values(initialMap).filter((p) => p.level === 'mastered').length
+        if (masteredCount === unpacked.length && unpacked.length > 0) {
+          setIsFullyMastered(true)
+        } else {
+          // Sinh vòng học thích ứng từ các từ chưa mastered
+          const firstBatch = generateAdaptiveLearnBatch(unpacked, initialMap, 6)
+          setCurrentQueue(firstBatch)
+          setCurrentIndex(0)
+        }
       }
 
       setLoading(false)
@@ -216,6 +259,34 @@ export default function LearnModePage({
     }
 
     setProgressMap(updatedMap)
+
+    // 1. Lưu tức thì vào LocalStorage (0ms)
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(`quizlet_learn_progress_${setId}`, JSON.stringify(updatedMap))
+      } catch (e) {}
+    }
+
+    // 2. Lưu trực tiếp vào Database Supabase (study_progress)
+    if (user) {
+      supabase
+        .from('study_progress')
+        .upsert(
+          {
+            user_id: user.id,
+            card_id: cardId,
+            status: nextLevel,
+            correct_count: nextStreak,
+            incorrect_count: nextIncorrect,
+            last_reviewed: new Date().toISOString(),
+          },
+          { onConflict: 'user_id, card_id' }
+        )
+        .then(() => {})
+    }
+
+    // 3. Cập nhật phiên học
+    saveStudySession({ setId, mode: 'learn', cardIndex: currentIndex })
   }
 
   // 3. Chuyển sang câu tiếp theo hoặc kết thúc vòng học
@@ -227,7 +298,9 @@ export default function LearnModePage({
     setIsCorrect(false)
 
     if (currentIndex + 1 < currentQueue.length) {
-      setCurrentIndex((i) => i + 1)
+      const nextIdx = currentIndex + 1
+      setCurrentIndex(nextIdx)
+      saveStudySession({ setId, mode: 'learn', cardIndex: nextIdx })
     } else {
       // Đã hoàn thành batch/vòng hiện tại!
       // Đếm số lượng theo cấp độ
@@ -265,7 +338,7 @@ export default function LearnModePage({
   }
 
   // Khởi động lại từ đầu
-  const restartLearn = () => {
+  const restartLearn = async () => {
     const initialMap: Record<string, CardProgressState> = {}
     allCards.forEach((c) => {
       initialMap[c.id] = {
@@ -281,6 +354,22 @@ export default function LearnModePage({
     setStreak(0)
     setIsFullyMastered(false)
     setShowRoundSummary(false)
+
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.removeItem(`quizlet_learn_progress_${setId}`)
+      } catch (e) {}
+    }
+    if (user) {
+      try {
+        await supabase
+          .from('study_progress')
+          .delete()
+          .eq('user_id', user.id)
+          .in('card_id', allCards.map((c) => c.id))
+      } catch (e) {}
+    }
+    await clearStudySession(setId)
 
     const firstBatch = generateAdaptiveLearnBatch(allCards, initialMap, 6)
     setCurrentQueue(firstBatch)

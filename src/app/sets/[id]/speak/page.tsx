@@ -14,7 +14,7 @@ import {
   playSuccessChime,
   playRetryBeep,
 } from '@/lib/quiz/speech-recognition'
-import { speakMultilingualText, isChineseText } from '@/lib/quiz/sentence-templates'
+import { speakMultilingualText, isChineseText, generateContextualCloze } from '@/lib/quiz/sentence-templates'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -55,6 +55,7 @@ export default function SpeakPracticePage({
   const [audioSpeed, setAudioSpeed] = useState<0.75 | 1.0>(1.0)
   const [resultsHistory, setResultsHistory] = useState<Record<string, SpeechScoreResult>>({})
   const [isCompleted, setIsCompleted] = useState(false)
+  const [isGeneratingAI, setIsGeneratingAI] = useState(false)
 
   const recognitionRef = useRef<any>(null)
   const supabase = createClient()
@@ -99,11 +100,44 @@ export default function SpeakPracticePage({
     loadData()
   }, [setId])
 
+  const handleGenerateAISentences = async () => {
+    if (!cards.length || isGeneratingAI) return
+    setIsGeneratingAI(true)
+    try {
+      const res = await fetch('/api/ai/sentences', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cards, setTitle: set?.title }),
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        if (data.sentences && Array.isArray(data.sentences) && data.sentences.length > 0) {
+          const sentenceMap = new Map<string, string>(
+            data.sentences.map((s: any) => [s.term, String(s.sentence)])
+          )
+          setCards((prev) =>
+            prev.map((c) => ({
+              ...c,
+              example_sentence: sentenceMap.get(c.term) || c.example_sentence,
+            }))
+          )
+          setTargetMode('sentence')
+          setScoreResult(null)
+          playSuccessChime()
+        }
+      }
+    } catch (err) {
+      console.warn('AI sentences generation fallback:', err)
+    } finally {
+      setIsGeneratingAI(false)
+    }
+  }
+
   const currentCard = cards[currentIndex]
-  const isCardZh = currentCard ? isChineseText(currentCard.term) : false
-  const fallbackSentence = isCardZh
-    ? `我 每天 都 在 练习 ${currentCard?.term || ''}`
-    : `She is actively practicing ${currentCard?.term || ''} in class.`
+  const fallbackSentence = currentCard
+    ? generateContextualCloze(currentCard.term, currentCard.definition).fullSentence
+    : ''
 
   const rawSentence =
     currentCard?.example_sentence && currentCard.example_sentence.trim()
@@ -389,35 +423,56 @@ export default function SpeakPracticePage({
       <Progress value={progressPercent} className="h-2" />
 
       {/* Target Mode Selector: Luôn luôn hiển thị để người học có thể chuyển đổi bất cứ lúc nào */}
-      <div className="flex items-center justify-center gap-2 bg-muted/60 p-1.5 rounded-2xl border border-border/60 max-w-md mx-auto">
-        <button
+      <div className="flex flex-col sm:flex-row items-center justify-center gap-2 max-w-lg mx-auto">
+        <div className="flex items-center justify-center gap-2 bg-muted/60 p-1.5 rounded-2xl border border-border/60 w-full sm:flex-1">
+          <button
+            type="button"
+            onClick={() => {
+              setTargetMode('term')
+              setScoreResult(null)
+            }}
+            className={`flex-1 py-2 px-4 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+              targetMode === 'term'
+                ? 'bg-card text-indigo-600 dark:text-indigo-400 shadow-sm border border-border/80'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <BookOpen className="size-4" /> Luyện đọc Từ vựng
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setTargetMode('sentence')
+              setScoreResult(null)
+            }}
+            className={`flex-1 py-2 px-4 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+              targetMode === 'sentence'
+                ? 'bg-card text-purple-600 dark:text-purple-400 shadow-sm border border-border/80'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <MessageSquare className="size-4" /> Luyện cả câu ví dụ ✨
+          </button>
+        </div>
+
+        <Button
           type="button"
-          onClick={() => {
-            setTargetMode('term')
-            setScoreResult(null)
-          }}
-          className={`flex-1 py-2 px-4 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
-            targetMode === 'term'
-              ? 'bg-card text-indigo-600 dark:text-indigo-400 shadow-sm border border-border/80'
-              : 'text-muted-foreground hover:text-foreground'
-          }`}
+          size="sm"
+          onClick={handleGenerateAISentences}
+          disabled={isGeneratingAI}
+          className="h-10 px-3.5 rounded-2xl text-xs font-bold bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-md shadow-purple-500/20 hover:scale-105 transition-all shrink-0"
         >
-          <BookOpen className="size-4" /> Luyện đọc Từ vựng
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setTargetMode('sentence')
-            setScoreResult(null)
-          }}
-          className={`flex-1 py-2 px-4 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
-            targetMode === 'sentence'
-              ? 'bg-card text-purple-600 dark:text-purple-400 shadow-sm border border-border/80'
-              : 'text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          <MessageSquare className="size-4" /> Luyện cả câu ví dụ ✨
-        </button>
+          {isGeneratingAI ? (
+            <>
+              <div className="size-3 rounded-full border-2 border-white border-t-transparent animate-spin mr-1.5" />
+              Đang tạo...
+            </>
+          ) : (
+            <>
+              <Sparkles className="size-3.5 mr-1" /> ✨ AI tạo câu mới
+            </>
+          )}
+        </Button>
       </div>
 
       {!speechSupported && (

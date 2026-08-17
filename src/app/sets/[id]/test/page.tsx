@@ -521,8 +521,10 @@ export default function TestModePage({
                   {q.type === 'cloze_fill_blank' && (
                     <div className="text-xs text-muted-foreground italic">
                       {q.clozePrefix}
-                      <span className="font-bold not-italic text-foreground">{q.prompt}</span>
-                      {q.clozeSuffix} (Gợi ý: {q.letterHint})
+                      <span className="font-bold not-italic text-foreground px-1 bg-muted rounded">
+                        {q.prompt}
+                      </span>
+                      {q.clozeSuffix}
                     </div>
                   )}
 
@@ -647,17 +649,6 @@ export default function TestModePage({
                       <span className="text-base font-medium text-foreground">{q.tfDisplayDef}</span>
                     </div>
                   )}
-
-                  {q.type === 'cloze_fill_blank' && (
-                    <div className="mt-3 p-3 rounded-xl bg-indigo-500/5 border border-indigo-500/20 space-y-1">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-semibold text-indigo-600 dark:text-indigo-400">Gợi ý độ dài:</span>
-                        <Badge variant="outline" className="font-mono text-xs border-indigo-500/30">
-                          {q.letterHint}
-                        </Badge>
-                      </div>
-                    </div>
-                  )}
                 </div>
 
                 {/* Question Inputs */}
@@ -743,16 +734,9 @@ export default function TestModePage({
                       <span className="text-foreground">{q.clozeSuffix}</span>
                     </div>
 
-                    <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-muted/40 rounded-xl border border-border/60 text-xs">
-                      <div className="text-muted-foreground">
-                        Nghĩa: <span className="font-bold text-foreground">{q.prompt}</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <span className="text-muted-foreground">Gợi ý:</span>
-                        <Badge variant="outline" className="font-mono text-xs border-indigo-500/30 bg-indigo-500/5">
-                          {q.letterHint}
-                        </Badge>
-                      </div>
+                    <div className="p-3 bg-muted/40 rounded-xl border border-border/60 text-xs">
+                      <span className="text-muted-foreground font-medium">Điền từ có nghĩa: </span>
+                      <span className="font-bold text-foreground">{q.prompt}</span>
                     </div>
                   </div>
                 )}
