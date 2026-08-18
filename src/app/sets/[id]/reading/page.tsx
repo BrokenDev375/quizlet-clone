@@ -252,32 +252,89 @@ export default function ReadingPage({
     (q) => selectedAnswers[q.id] === q.correctIndex
   ).length
 
-  // Hàm render chữ Hán kèm thẻ <ruby> Pinyin phía trên
-  const renderPassageWithPinyin = (text: string) => {
-    if (!isZh || !showPinyin) {
+  // Helper lấy chuỗi Pinyin đầy đủ cho câu/đoạn văn
+  const getPinyinString = (text: string): string => {
+    if (!text || !/[\u4e00-\u9fa5]/.test(text)) return ''
+    try {
+      return pinyin(text)
+    } catch {
+      return ''
+    }
+  }
+
+  // Hàm render chữ Hán kèm thẻ <ruby> Pinyin phía trên ngữ cảnh thông minh
+  const renderAnnotatedText = (
+    text: string,
+    options: { size?: 'sm' | 'md' | 'lg'; clickable?: boolean; forcePinyin?: boolean } = {}
+  ) => {
+    const { size = 'md', clickable = true, forcePinyin = false } = options
+    const shouldShowPinyin = (isZh && showPinyin) || forcePinyin
+
+    // Nếu không chứa chữ Hán, render text thuần
+    if (!/[\u4e00-\u9fa5]/.test(text)) {
       return <span>{text}</span>
     }
 
-    // Tách theo từng ký tự Hán tự
-    const chars = text.split('')
-    return (
-      <span className="leading-[2.8] sm:leading-[3.2] inline">
-        {chars.map((ch, i) => {
-          if (/[\u4e00-\u9fa5]/.test(ch)) {
-            const py = pinyin(ch)
-            return (
-              <ruby key={i} className="mx-[1px] select-text cursor-pointer hover:text-indigo-600 transition" onClick={() => handleQuickLookup(ch)}>
-                {ch}
-                <rt className="text-[11px] sm:text-xs font-normal text-indigo-600 dark:text-indigo-400 select-none pb-0.5">
-                  {py}
-                </rt>
-              </ruby>
-            )
-          }
-          return <span key={i}>{ch}</span>
-        })}
-      </span>
-    )
+    try {
+      const tokens = pinyin(text, { type: 'all' }) as Array<{
+        origin: string
+        pinyin: string
+        isZh: boolean
+      }>
+
+      const rtClass =
+        size === 'lg'
+          ? 'text-[11px] sm:text-xs font-normal text-indigo-600 dark:text-indigo-400 select-none pb-0.5'
+          : size === 'sm'
+          ? 'text-[9px] sm:text-[10px] font-normal text-indigo-600 dark:text-indigo-400 select-none pb-0.5'
+          : 'text-[10px] sm:text-[11px] font-normal text-indigo-600 dark:text-indigo-400 select-none pb-0.5'
+
+      return (
+        <span className={shouldShowPinyin ? 'leading-[2.6] sm:leading-[3.0] inline' : 'inline'}>
+          {tokens.map((token, i) => {
+            const hasHanzi = /[\u4e00-\u9fa5]/.test(token.origin)
+            if (hasHanzi && shouldShowPinyin && token.pinyin) {
+              return (
+                <ruby
+                  key={i}
+                  className={`mx-[0.5px] select-text transition ${
+                    clickable ? 'cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400' : ''
+                  }`}
+                  onClick={(e) => {
+                    if (clickable) {
+                      e.stopPropagation()
+                      handleQuickLookup(token.origin)
+                    }
+                  }}
+                >
+                  {token.origin}
+                  <rt className={rtClass}>{token.pinyin}</rt>
+                </ruby>
+              )
+            }
+
+            if (hasHanzi && clickable) {
+              return (
+                <span
+                  key={i}
+                  className="cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400 transition underline decoration-dotted decoration-indigo-400/40"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleQuickLookup(token.origin)
+                  }}
+                >
+                  {token.origin}
+                </span>
+              )
+            }
+
+            return <span key={i}>{token.origin}</span>
+          })}
+        </span>
+      )
+    } catch {
+      return <span>{text}</span>
+    }
   }
 
   return (
@@ -395,7 +452,9 @@ export default function ReadingPage({
               <Badge variant="outline" className="text-[10px] font-semibold border-indigo-500/30 text-indigo-600 dark:text-indigo-400">
                 {currentPassage.genre}
               </Badge>
-              <CardTitle className="text-lg sm:text-xl font-bold">{currentPassage.title}</CardTitle>
+              <CardTitle className="text-lg sm:text-xl font-bold">
+                {renderAnnotatedText(currentPassage.title, { size: 'md', clickable: true })}
+              </CardTitle>
             </div>
 
             {/* Quick Word Lookup Input Bar with Magnifying Glass */}
@@ -426,7 +485,7 @@ export default function ReadingPage({
         <CardContent className="p-6 sm:p-8 space-y-6">
           {/* Main Passage Text with Ruby Pinyin */}
           <div className="text-lg sm:text-xl font-medium text-foreground">
-            {renderPassageWithPinyin(currentPassage.content)}
+            {renderAnnotatedText(currentPassage.content, { size: 'lg', clickable: true })}
           </div>
 
           {showTranslation && (
@@ -523,30 +582,63 @@ export default function ReadingPage({
           )}
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-5">
           {currentPassage.questions.map((q, qIdx) => {
             const userChoice = selectedAnswers[q.id]
+            const isAnswered = userChoice !== undefined
+            const isCorrect = userChoice === q.correctIndex
 
             return (
-              <Card key={q.id} className="border-border bg-card">
+              <Card key={q.id} className="border-border bg-card shadow-sm hover:shadow-md transition-shadow">
                 <CardContent className="p-5 sm:p-6 space-y-4">
-                  <p className="font-bold text-base text-foreground leading-snug">
-                    Câu {qIdx + 1}: {q.question}
-                  </p>
+                  {/* Question Header */}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-1.5 flex-1">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-[11px] font-bold border-indigo-500/30 text-indigo-600 dark:text-indigo-400">
+                          Câu {qIdx + 1}
+                        </Badge>
+                        {isZh && (
+                          <Badge variant="secondary" className="text-[10px] gap-1 font-mono">
+                            <Languages className="size-3 text-indigo-500" /> Tiếng Trung
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="font-bold text-base text-foreground leading-relaxed pt-0.5">
+                        {renderAnnotatedText(q.question, { size: 'md', clickable: true })}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => speakMultilingualText(q.question)}
+                      className="size-8 text-muted-foreground hover:text-indigo-600 shrink-0 rounded-lg"
+                      title="Nghe phát âm câu hỏi"
+                    >
+                      <Volume2 className="size-4" />
+                    </Button>
+                  </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {/* Options Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {q.options.map((opt, optIdx) => {
                       const isSelected = userChoice === optIdx
+                      const isCorrectOption = optIdx === q.correctIndex
+                      const optPinyin = getPinyinString(opt)
+                      const hasChinese = /[\u4e00-\u9fa5]/.test(opt)
 
-                      let btnStyle = 'border-border bg-card hover:bg-muted/60'
+                      let containerStyle = 'border-border/80 bg-card hover:bg-muted/50 hover:border-indigo-300 dark:hover:border-indigo-800'
                       if (quizSubmitted) {
-                        if (optIdx === q.correctIndex) {
-                          btnStyle = 'border-emerald-500 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 font-bold'
+                        if (isCorrectOption) {
+                          containerStyle = 'border-emerald-500 bg-emerald-500/10 text-emerald-950 dark:text-emerald-50 shadow-sm ring-2 ring-emerald-500/20'
                         } else if (isSelected) {
-                          btnStyle = 'border-destructive bg-destructive/10 text-destructive font-bold'
+                          containerStyle = 'border-rose-500 bg-rose-500/10 text-rose-950 dark:text-rose-50 shadow-sm ring-2 ring-rose-500/20'
+                        } else {
+                          containerStyle = 'border-border/60 bg-muted/20 opacity-75'
                         }
                       } else if (isSelected) {
-                        btnStyle = 'border-indigo-600 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-semibold ring-2 ring-indigo-500/20'
+                        containerStyle = 'border-indigo-600 bg-indigo-500/10 text-indigo-900 dark:text-indigo-100 font-semibold ring-2 ring-indigo-500/30'
                       }
 
                       return (
@@ -555,21 +647,143 @@ export default function ReadingPage({
                           type="button"
                           disabled={quizSubmitted}
                           onClick={() => handleSelectOption(q.id, optIdx)}
-                          className={`p-3 rounded-xl border text-left text-sm transition-all flex items-start gap-2.5 ${btnStyle}`}
+                          className={`p-3.5 rounded-2xl border text-left text-sm transition-all duration-200 flex flex-col justify-between gap-2 relative group cursor-pointer disabled:cursor-default ${containerStyle}`}
                         >
-                          <span className="size-5 rounded-md bg-muted text-muted-foreground text-xs font-bold flex items-center justify-center shrink-0 border border-border/60">
-                            {optIdx + 1}
-                          </span>
-                          <span className="flex-1 leading-snug">{opt}</span>
+                          <div className="flex items-start justify-between gap-2 w-full">
+                            <div className="flex items-start gap-2.5 flex-1">
+                              <span className={`size-6 rounded-lg text-xs font-black flex items-center justify-center shrink-0 border transition ${
+                                quizSubmitted && isCorrectOption
+                                  ? 'bg-emerald-600 text-white border-emerald-600'
+                                  : quizSubmitted && isSelected
+                                  ? 'bg-rose-600 text-white border-rose-600'
+                                  : isSelected
+                                  ? 'bg-indigo-600 text-white border-indigo-600'
+                                  : 'bg-muted text-muted-foreground border-border/80 group-hover:bg-indigo-100 dark:group-hover:bg-indigo-950/50'
+                              }`}>
+                                {String.fromCharCode(65 + optIdx)}
+                              </span>
+
+                              <div className="flex-1 text-sm font-medium leading-relaxed">
+                                {renderAnnotatedText(opt, { size: 'sm', clickable: true })}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1 shrink-0">
+                              {/* Option Voice Button */}
+                              {hasChinese && (
+                                <span
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    speakMultilingualText(opt)
+                                  }}
+                                  className="size-7 rounded-lg text-muted-foreground hover:text-indigo-600 hover:bg-muted/80 flex items-center justify-center cursor-pointer transition"
+                                  title="Nghe phát âm đáp án"
+                                >
+                                  <Volume2 className="size-3.5" />
+                                </span>
+                              )}
+
+                              {/* Status Badges on Submit */}
+                              {quizSubmitted && isCorrectOption && (
+                                <Badge className="bg-emerald-600 hover:bg-emerald-600 text-white text-[10px] gap-1 py-0.5 px-2 font-bold shadow-sm">
+                                  <CheckCircle2 className="size-3" /> Đáp án đúng
+                                </Badge>
+                              )}
+                              {quizSubmitted && isSelected && !isCorrectOption && (
+                                <Badge variant="destructive" className="text-[10px] gap-1 py-0.5 px-2 font-bold shadow-sm">
+                                  <XCircle className="size-3" /> Bạn đã chọn
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Dedicated Pinyin Transcription line for Chinese options */}
+                          {(quizSubmitted || isSelected) && optPinyin && (
+                            <div className={`mt-1 text-xs font-mono px-2.5 py-1 rounded-xl flex items-center justify-between gap-2 border ${
+                              quizSubmitted && isCorrectOption
+                                ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-800 dark:text-emerald-200 font-semibold'
+                                : quizSubmitted && isSelected
+                                ? 'bg-rose-500/15 border-rose-500/30 text-rose-800 dark:text-rose-200 font-semibold'
+                                : 'bg-indigo-500/10 border-indigo-500/20 text-indigo-700 dark:text-indigo-300'
+                            }`}>
+                              <span className="flex items-center gap-1.5 truncate">
+                                <span className="opacity-70">🗣️ Pinyin:</span>
+                                <span className="font-bold">{optPinyin}</span>
+                              </span>
+                              <span
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  speakMultilingualText(opt)
+                                }}
+                                className="text-[11px] opacity-75 hover:opacity-100 hover:underline shrink-0 cursor-pointer font-sans"
+                              >
+                                Nghe
+                              </span>
+                            </div>
+                          )}
                         </button>
                       )
                     })}
                   </div>
 
-                  {quizSubmitted && q.explanation && (
-                    <div className="p-3 rounded-xl bg-muted/60 border border-border/60 text-xs text-muted-foreground">
-                      <span className="font-bold text-foreground">Giải thích: </span>
-                      {q.explanation}
+                  {/* Feedback and Explanation Section upon Submission */}
+                  {quizSubmitted && (
+                    <div className="space-y-3 pt-2">
+                      {/* Result Status Banner */}
+                      <div className={`p-3.5 rounded-2xl flex items-start gap-3 border ${
+                        isCorrect
+                          ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-800 dark:text-emerald-200'
+                          : 'bg-rose-500/10 border-rose-500/30 text-rose-800 dark:text-rose-200'
+                      }`}>
+                        {isCorrect ? (
+                          <CheckCircle2 className="size-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                        ) : (
+                          <XCircle className="size-5 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+                        )}
+                        <div className="space-y-1 flex-1 text-xs sm:text-sm">
+                          <p className="font-bold">
+                            {isCorrect
+                              ? '🎉 Chính xác! Bạn đã chọn đúng đáp án.'
+                              : `❌ Chưa chính xác! Đáp án đúng là lựa chọn ${String.fromCharCode(65 + q.correctIndex)}.`}
+                          </p>
+                          {!isCorrect && (
+                            <p className="text-muted-foreground text-xs leading-relaxed">
+                              Đáp án đúng:{' '}
+                              <span className="font-semibold text-emerald-700 dark:text-emerald-300">
+                                {q.options[q.correctIndex]}
+                              </span>
+                              {getPinyinString(q.options[q.correctIndex]) && (
+                                <span className="font-mono ml-1.5 opacity-90">
+                                  ({getPinyinString(q.options[q.correctIndex])})
+                                </span>
+                              )}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Detailed Explanation Box */}
+                      {q.explanation && (
+                        <div className="p-4 rounded-2xl bg-muted/60 border border-border/80 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-xs text-foreground uppercase tracking-wider flex items-center gap-1.5">
+                              💡 Giải thích chi tiết & Phân tích ngữ cảnh:
+                            </span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => speakMultilingualText(q.explanation)}
+                              className="h-7 text-xs text-indigo-600 dark:text-indigo-400 gap-1 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
+                            >
+                              <Volume2 className="size-3.5" /> Nghe giải thích
+                            </Button>
+                          </div>
+                          <div className="text-xs sm:text-sm text-foreground/90 leading-relaxed">
+                            {renderAnnotatedText(q.explanation, { size: 'sm', clickable: true })}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </CardContent>
@@ -583,24 +797,39 @@ export default function ReadingPage({
             size="lg"
             onClick={handleSubmitQuiz}
             disabled={Object.keys(selectedAnswers).length < currentPassage.questions.length}
-            className="w-full bg-gradient-to-r from-indigo-600 to-blue-600 text-white font-bold text-base shadow-lg shadow-indigo-500/25"
+            className="w-full bg-gradient-to-r from-indigo-600 to-blue-600 text-white font-bold text-base shadow-lg shadow-indigo-500/25 cursor-pointer hover:scale-[1.01] transition-transform"
           >
             Nộp bài & Kiểm tra đáp án
           </Button>
         ) : (
-          <div className="p-6 rounded-2xl bg-gradient-to-b from-card to-muted/40 border border-border text-center space-y-3">
-            <Trophy className="size-10 text-indigo-600 mx-auto" />
-            <h3 className="text-xl font-bold">
-              Kết quả: {correctAnswersCount} / {currentPassage.questions.length} câu đúng
-            </h3>
-            <p className="text-sm text-muted-foreground">
-              {correctAnswersCount === currentPassage.questions.length
-                ? '🎉 Xuất sắc! Bạn đã hiểu toàn bộ bài đọc!'
-                : '💪 Bạn hãy xem lại phần giải thích chi tiết phía trên để rút kinh nghiệm nhé!'}
-            </p>
+          <div className="p-6 rounded-2xl bg-gradient-to-b from-card to-muted/40 border border-border text-center space-y-4">
+            <Trophy className="size-12 text-indigo-600 mx-auto" />
+            <div className="space-y-1">
+              <h3 className="text-xl font-black">
+                Kết quả: {correctAnswersCount} / {currentPassage.questions.length} câu đúng
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                {correctAnswersCount === currentPassage.questions.length
+                  ? '🎉 Xuất sắc! Bạn đã hiểu toàn bộ bài đọc và trả lời đúng 100%!'
+                  : '💪 Bạn hãy xem lại phiên âm Pinyin và phần giải thích chi tiết phía trên để rút kinh nghiệm nhé!'}
+              </p>
+            </div>
+            <div className="flex items-center justify-center gap-3 pt-2">
+              <Button
+                onClick={() => {
+                  setSelectedAnswers({})
+                  setQuizSubmitted(false)
+                }}
+                variant="outline"
+                className="gap-2 font-bold cursor-pointer"
+              >
+                <RotateCcw className="size-4" /> Làm lại bài trắc nghiệm này
+              </Button>
+            </div>
           </div>
         )}
       </div>
     </div>
   )
 }
+

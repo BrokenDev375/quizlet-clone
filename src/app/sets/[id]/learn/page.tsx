@@ -14,8 +14,9 @@ import {
   generateAdaptiveLearnBatch,
   checkWrittenAnswer,
 } from '@/lib/quiz/question-generator'
-import { speakMultilingualText } from '@/lib/quiz/sentence-templates'
+import { speakMultilingualText, isChineseText } from '@/lib/quiz/sentence-templates'
 import { playSuccessChime, playRetryBeep } from '@/lib/quiz/speech-recognition'
+import { pinyin } from 'pinyin-pro'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
@@ -34,6 +35,7 @@ import {
   Layers,
   Flame,
   Check,
+  Languages,
 } from 'lucide-react'
 
 export default function LearnModePage({
@@ -50,6 +52,7 @@ export default function LearnModePage({
   const [currentQueue, setCurrentQueue] = useState<QuizQuestion[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
   const [user, setUser] = useState<any>(null)
+  const [showPinyin, setShowPinyin] = useState(true)
 
   // Question Interaction State
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null)
@@ -599,6 +602,66 @@ export default function LearnModePage({
     correctStreak: 0,
   }
 
+  const isZh = allCards.some((c) => isChineseText(c.term))
+
+  // Helper lấy chuỗi Pinyin đầy đủ cho câu/từ
+  const getPinyinString = (text: string, fallbackPhonetic?: string | null): string => {
+    if (fallbackPhonetic && fallbackPhonetic.trim()) return fallbackPhonetic.trim()
+    if (!text || !/[\u4e00-\u9fa5]/.test(text)) return ''
+    try {
+      return pinyin(text)
+    } catch {
+      return ''
+    }
+  }
+
+  // Hàm render chữ Hán kèm thẻ <ruby> Pinyin phía trên ngữ cảnh thông minh
+  const renderAnnotatedText = (
+    text: string,
+    options: { size?: 'sm' | 'md' | 'lg'; forcePinyin?: boolean } = {}
+  ) => {
+    const { size = 'md', forcePinyin = false } = options
+    const shouldShowPinyin = (isZh && showPinyin) || forcePinyin
+
+    if (!text || !/[\u4e00-\u9fa5]/.test(text)) {
+      return <span>{text}</span>
+    }
+
+    try {
+      const tokens = pinyin(text, { type: 'all' }) as Array<{
+        origin: string
+        pinyin: string
+        isZh: boolean
+      }>
+
+      const rtClass =
+        size === 'lg'
+          ? 'text-[11px] sm:text-xs font-normal text-indigo-600 dark:text-indigo-400 select-none pb-0.5'
+          : size === 'sm'
+          ? 'text-[9px] sm:text-[10px] font-normal text-indigo-600 dark:text-indigo-400 select-none pb-0.5'
+          : 'text-[10px] sm:text-[11px] font-normal text-indigo-600 dark:text-indigo-400 select-none pb-0.5'
+
+      return (
+        <span className={shouldShowPinyin ? 'leading-[2.6] sm:leading-[2.9] inline' : 'inline'}>
+          {tokens.map((token, i) => {
+            const hasHanzi = /[\u4e00-\u9fa5]/.test(token.origin)
+            if (hasHanzi && shouldShowPinyin && token.pinyin) {
+              return (
+                <ruby key={i} className="mx-[0.5px] select-text">
+                  {token.origin}
+                  <rt className={rtClass}>{token.pinyin}</rt>
+                </ruby>
+              )
+            }
+            return <span key={i}>{token.origin}</span>
+          })}
+        </span>
+      )
+    } catch {
+      return <span>{text}</span>
+    }
+  }
+
   return (
     <div className="container max-w-3xl mx-auto py-6 px-4 space-y-6">
       {/* Header & Thanh tiến độ 3 màu */}
@@ -616,6 +679,18 @@ export default function LearnModePage({
           </Link>
 
           <div className="flex items-center gap-2">
+            {isZh && (
+              <Button
+                variant={showPinyin ? 'secondary' : 'outline'}
+                size="sm"
+                onClick={() => setShowPinyin(!showPinyin)}
+                className="text-xs h-7 gap-1 px-2.5"
+              >
+                <Languages className="size-3.5 text-indigo-600" />
+                {showPinyin ? 'Pinyin: BẬT' : 'Pinyin: TẮT'}
+              </Button>
+            )}
+
             <Badge variant="outline" className="text-xs font-semibold px-2.5 py-1 gap-1.5 border-indigo-500/30 text-indigo-600 dark:text-indigo-400 bg-indigo-500/5">
               <Layers className="size-3.5" /> Vòng {roundNumber}
             </Badge>
@@ -696,7 +771,7 @@ export default function LearnModePage({
             size="icon"
             onClick={() => speakText(currentQ.card.term)}
             className="size-8 rounded-full text-muted-foreground hover:text-foreground"
-            title="Phát âm từ tiếng Anh"
+            title="Phát âm từ"
           >
             <Volume2 className="size-4" />
           </Button>
@@ -711,14 +786,16 @@ export default function LearnModePage({
                 : 'Thuật ngữ:'}
             </div>
             <div className="text-2xl sm:text-3xl font-extrabold text-foreground tracking-tight leading-snug">
-              {currentQ.prompt}
+              {renderAnnotatedText(currentQ.prompt, { size: 'lg' })}
             </div>
 
             {/* Nếu là dạng Đúng / Sai -> Hiển thị thêm định nghĩa so sánh */}
             {currentQ.type === 'true_false' && (
               <div className="mt-4 p-4 rounded-xl bg-muted/50 border border-border/70 space-y-1">
                 <div className="text-xs font-semibold uppercase text-muted-foreground">Định nghĩa hiển thị:</div>
-                <div className="text-lg font-medium text-foreground">{currentQ.tfDisplayDef}</div>
+                <div className="text-lg font-medium text-foreground">
+                  {renderAnnotatedText(currentQ.tfDisplayDef || '', { size: 'md' })}
+                </div>
               </div>
             )}
           </div>
@@ -730,11 +807,11 @@ export default function LearnModePage({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
               {currentQ.options?.map((option, idx) => {
                 let btnStyle = 'border-border/80 bg-card hover:bg-muted/60 hover:border-indigo-500/50'
+                const isThisCorrect = option.trim() === currentQ.targetAnswer.trim()
+                const isThisSelected = option === selectedAnswer
+                const optPinyin = getPinyinString(option)
 
                 if (isAnswered) {
-                  const isThisCorrect = option.trim() === currentQ.targetAnswer.trim()
-                  const isThisSelected = option === selectedAnswer
-
                   if (isThisCorrect) {
                     btnStyle = 'border-emerald-500 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 font-semibold ring-2 ring-emerald-500/20'
                   } else if (isThisSelected && !isThisCorrect) {
@@ -750,17 +827,41 @@ export default function LearnModePage({
                     type="button"
                     onClick={() => handleAnswer(option)}
                     disabled={isAnswered}
-                    className={`relative p-4 rounded-xl border text-left transition-all duration-200 flex items-start gap-3 text-sm sm:text-base ${btnStyle}`}
+                    className={`relative p-4 rounded-xl border text-left transition-all duration-200 flex flex-col justify-between gap-2 text-sm sm:text-base cursor-pointer disabled:cursor-default ${btnStyle}`}
                   >
-                    <span className="size-6 rounded-lg bg-muted text-muted-foreground flex items-center justify-center font-bold text-xs shrink-0 border border-border/60">
-                      {idx + 1}
-                    </span>
-                    <span className="flex-1 leading-relaxed">{option}</span>
-                    {isAnswered && option.trim() === currentQ.targetAnswer.trim() && (
-                      <CheckCircle2 className="size-5 text-emerald-500 shrink-0 mt-0.5" />
-                    )}
-                    {isAnswered && option === selectedAnswer && option.trim() !== currentQ.targetAnswer.trim() && (
-                      <XCircle className="size-5 text-destructive shrink-0 mt-0.5" />
+                    <div className="flex items-start gap-3 w-full">
+                      <span className="size-6 rounded-lg bg-muted text-muted-foreground flex items-center justify-center font-bold text-xs shrink-0 border border-border/60">
+                        {idx + 1}
+                      </span>
+                      <span className="flex-1 leading-relaxed">
+                        {renderAnnotatedText(option, { size: 'sm' })}
+                      </span>
+                      {isAnswered && isThisCorrect && (
+                        <CheckCircle2 className="size-5 text-emerald-500 shrink-0 mt-0.5" />
+                      )}
+                      {isAnswered && isThisSelected && !isThisCorrect && (
+                        <XCircle className="size-5 text-destructive shrink-0 mt-0.5" />
+                      )}
+                    </div>
+
+                    {/* Dedicated Pinyin transcription line on answer */}
+                    {isAnswered && (isThisCorrect || isThisSelected) && optPinyin && (
+                      <div className={`mt-1 text-xs font-mono px-2.5 py-1 rounded-lg flex items-center justify-between gap-2 border w-full ${
+                        isThisCorrect
+                          ? 'bg-emerald-500/15 text-emerald-800 dark:text-emerald-200 border-emerald-500/30'
+                          : 'bg-destructive/15 text-destructive border-destructive/30'
+                      }`}>
+                        <span className="truncate">🗣️ Pinyin: {optPinyin}</span>
+                        <span
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            speakText(option)
+                          }}
+                          className="text-[11px] opacity-80 hover:opacity-100 hover:underline cursor-pointer font-sans shrink-0"
+                        >
+                          Nghe
+                        </span>
+                      </div>
                     )}
                   </button>
                 )
@@ -796,7 +897,7 @@ export default function LearnModePage({
                     type="button"
                     onClick={() => handleAnswer(btn.value)}
                     disabled={isAnswered}
-                    className={`h-16 rounded-2xl border text-center font-bold text-lg transition-all duration-200 flex items-center justify-center gap-3 ${btnStyle}`}
+                    className={`h-16 rounded-2xl border text-center font-bold text-lg transition-all duration-200 flex items-center justify-center gap-3 cursor-pointer disabled:cursor-default ${btnStyle}`}
                   >
                     <span>{btn.label}</span>
                     <span className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground border border-border">
@@ -861,7 +962,7 @@ export default function LearnModePage({
               }}
               className="space-y-5 pt-2"
             >
-              {/* Câu tiếng Anh có ô trống inline */}
+              {/* Câu có ô trống inline */}
               <div className="p-6 rounded-2xl bg-gradient-to-r from-indigo-500/10 via-card to-blue-500/10 border-2 border-indigo-500/30 text-lg sm:text-xl font-medium leading-loose">
                 <span className="text-foreground">{currentQ.clozePrefix}</span>
                 <span className="inline-block mx-2 align-baseline">
@@ -925,7 +1026,7 @@ export default function LearnModePage({
               }`}
             >
               <div className="flex items-start justify-between gap-4">
-                <div className="space-y-1.5">
+                <div className="space-y-2 flex-1">
                   <div className="flex items-center gap-2 font-bold text-base sm:text-lg">
                     {isCorrect ? (
                       <>
@@ -940,16 +1041,84 @@ export default function LearnModePage({
                     )}
                   </div>
 
-                  {!isCorrect && (
-                    <div className="pt-2 space-y-1 text-sm text-foreground">
-                      <div>
-                        <span className="font-semibold text-muted-foreground">Thuật ngữ: </span>
-                        <span className="font-bold text-indigo-600 dark:text-indigo-400">{currentQ.card.term}</span>
+                  {isCorrect ? (
+                    <div className="pt-2 space-y-1.5 text-sm text-foreground bg-emerald-500/5 p-3.5 rounded-xl border border-emerald-500/20">
+                      <div className="flex items-center flex-wrap gap-2">
+                        <span className="font-semibold text-muted-foreground">Thuật ngữ:</span>
+                        <span className="font-bold text-base text-foreground">
+                          {renderAnnotatedText(currentQ.card.term, { size: 'md', forcePinyin: true })}
+                        </span>
+                        {getPinyinString(currentQ.card.term, currentQ.card.phonetic) && (
+                          <Badge variant="outline" className="font-mono text-xs border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
+                            {getPinyinString(currentQ.card.term, currentQ.card.phonetic)}
+                          </Badge>
+                        )}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => speakText(currentQ.card.term)}
+                          className="size-7 rounded-full text-emerald-600 hover:bg-emerald-500/10"
+                          title="Nghe phát âm"
+                        >
+                          <Volume2 className="size-3.5" />
+                        </Button>
                       </div>
                       <div>
                         <span className="font-semibold text-muted-foreground">Định nghĩa: </span>
-                        <span>{currentQ.card.definition}</span>
+                        <span className="font-medium">{currentQ.card.definition}</span>
                       </div>
+                      {currentQ.card.example_sentence && (
+                        <div className="text-xs text-muted-foreground pt-1 border-t border-emerald-500/15">
+                          <span className="font-semibold">Ví dụ: </span>
+                          <span>{currentQ.card.example_sentence}</span>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="pt-2 space-y-2 text-sm text-foreground bg-destructive/5 p-3.5 rounded-xl border border-destructive/20">
+                      <div className="flex items-center flex-wrap gap-2">
+                        <span className="font-semibold text-muted-foreground">Đáp án đúng:</span>
+                        <span className="font-bold text-base text-foreground">
+                          {renderAnnotatedText(currentQ.card.term, { size: 'md', forcePinyin: true })}
+                        </span>
+                        {getPinyinString(currentQ.card.term, currentQ.card.phonetic) && (
+                          <Badge variant="outline" className="font-mono text-xs border-destructive/30 bg-destructive/10 text-destructive">
+                            {getPinyinString(currentQ.card.term, currentQ.card.phonetic)}
+                          </Badge>
+                        )}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => speakText(currentQ.card.term)}
+                          className="size-7 rounded-full text-destructive hover:bg-destructive/10"
+                          title="Nghe phát âm"
+                        >
+                          <Volume2 className="size-3.5" />
+                        </Button>
+                      </div>
+                      <div>
+                        <span className="font-semibold text-muted-foreground">Định nghĩa: </span>
+                        <span className="font-medium">{currentQ.card.definition}</span>
+                      </div>
+                      {selectedAnswer && (
+                        <div className="text-xs text-muted-foreground">
+                          <span className="font-semibold">Bạn đã chọn: </span>
+                          <span className="text-destructive font-semibold">
+                            {selectedAnswer}
+                            {getPinyinString(selectedAnswer) && (
+                              <span className="font-mono ml-1 text-muted-foreground">({getPinyinString(selectedAnswer)})</span>
+                            )}
+                          </span>
+                        </div>
+                      )}
+                      {currentQ.card.example_sentence && (
+                        <div className="text-xs text-muted-foreground pt-1 border-t border-destructive/15">
+                          <span className="font-semibold">Ví dụ: </span>
+                          <span>{currentQ.card.example_sentence}</span>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -972,3 +1141,4 @@ export default function LearnModePage({
     </div>
   )
 }
+
