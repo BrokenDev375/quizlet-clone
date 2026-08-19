@@ -47,7 +47,9 @@ export default function SpeakPracticePage({
   const setId = resolvedParams.id
 
   const [set, setSet] = useState<FlashcardSet | null>(null)
-  const [cards, setCards] = useState<(CardType & { phonetic?: string; example_sentence?: string })[]>([])
+  const [cards, setCards] = useState<
+    (CardType & { phonetic?: string; example_sentence?: string; sentence_translation?: string })[]
+  >([])
   const [currentIndex, setCurrentIndex] = useState(0)
   const [targetMode, setTargetMode] = useState<'term' | 'sentence'>('term')
   const [loading, setLoading] = useState(true)
@@ -116,14 +118,21 @@ export default function SpeakPracticePage({
       if (res.ok) {
         const data = await res.json()
         if (data.sentences && Array.isArray(data.sentences) && data.sentences.length > 0) {
-          const sentenceMap = new Map<string, string>(
-            data.sentences.map((s: any) => [s.term, String(s.sentence)])
+          const sentenceMap = new Map<string, { sentence: string; translation?: string }>(
+            data.sentences.map((s: any) => [
+              s.term,
+              { sentence: String(s.sentence), translation: s.translation ? String(s.translation) : undefined },
+            ])
           )
           setCards((prev) =>
-            prev.map((c) => ({
-              ...c,
-              example_sentence: sentenceMap.get(c.term) || c.example_sentence,
-            }))
+            prev.map((c) => {
+              const aiData = sentenceMap.get(c.term)
+              return {
+                ...c,
+                example_sentence: aiData?.sentence || c.example_sentence,
+                sentence_translation: aiData?.translation || (c as any).sentence_translation,
+              }
+            })
           )
           setTargetMode('sentence')
           setScoreResult(null)
@@ -138,14 +147,13 @@ export default function SpeakPracticePage({
   }
 
   const currentCard = cards[currentIndex]
-  const fallbackSentence = currentCard
-    ? generateContextualCloze(currentCard.term, currentCard.definition).fullSentence
-    : ''
+  const clozeData = currentCard
+    ? generateContextualCloze(currentCard.term, currentCard.definition, currentCard.example_sentence)
+    : null
 
-  const rawSentence =
-    currentCard?.example_sentence && currentCard.example_sentence.trim()
-      ? currentCard.example_sentence.replace(/\[|\]/g, '').trim()
-      : fallbackSentence
+  const rawSentence = clozeData ? clozeData.fullSentence : ''
+  const sentenceTranslation =
+    (currentCard as any)?.sentence_translation || clozeData?.translation || ''
 
   const activeTarget = targetMode === 'sentence' ? rawSentence : currentCard?.term || ''
 
@@ -605,18 +613,31 @@ export default function SpeakPracticePage({
                   </div>
                 )}
 
-                <p className="text-sm font-medium text-muted-foreground">
-                  Nghĩa của từ trọng tâm:{' '}
-                  <strong className="text-foreground">
+                {/* Dedicated Full Sentence Vietnamese Translation */}
+                {sentenceTranslation && (
+                  <div className="p-3.5 rounded-2xl bg-emerald-500/10 dark:bg-emerald-950/30 border border-emerald-500/20 max-w-xl mx-auto flex items-start gap-2.5 text-left animate-in fade-in">
+                    <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5">
+                      🇻🇳 Dịch nghĩa câu:
+                    </span>
+                    <span className="text-sm sm:text-base font-medium text-foreground leading-relaxed">
+                      {sentenceTranslation}
+                    </span>
+                  </div>
+                )}
+
+                {/* Thông tin từ vựng trọng tâm */}
+                <div className="p-2.5 rounded-xl bg-muted/40 border border-border/60 max-w-xl mx-auto text-xs sm:text-sm text-muted-foreground flex flex-wrap items-center justify-center gap-1.5">
+                  <span>Từ trọng tâm: </span>
+                  <strong className="text-foreground font-bold text-base mx-1">
                     {renderAnnotatedText(currentCard.term, { size: 'sm' })}
-                  </strong>{' '}
+                  </strong>
                   {getPinyinString(currentCard.term, currentCard.phonetic) && (
                     <span className="font-mono text-xs text-indigo-600 dark:text-indigo-400 font-semibold mr-1">
                       ({getPinyinString(currentCard.term, currentCard.phonetic)})
                     </span>
                   )}
-                  ({currentCard.definition})
-                </p>
+                  <span>— {currentCard.definition}</span>
+                </div>
               </div>
             ) : (
               <>
@@ -756,6 +777,16 @@ export default function SpeakPracticePage({
                   </p>
                 )}
               </div>
+
+              {/* Translation in feedback */}
+              {targetMode === 'sentence' && sentenceTranslation && (
+                <div className="text-xs space-y-1 bg-emerald-500/5 p-3 rounded-xl border border-emerald-500/20">
+                  <p className="text-emerald-700 dark:text-emerald-300 font-semibold">🇻🇳 Dịch nghĩa câu:</p>
+                  <p className="font-medium text-foreground">
+                    {sentenceTranslation}
+                  </p>
+                </div>
+              )}
 
               {/* Word by word breakdown feedback */}
               {scoreResult.wordFeedback.length > 0 && (
