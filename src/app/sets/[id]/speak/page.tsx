@@ -15,6 +15,7 @@ import {
   playRetryBeep,
 } from '@/lib/quiz/speech-recognition'
 import { speakMultilingualText, isChineseText, generateContextualCloze } from '@/lib/quiz/sentence-templates'
+import { pinyin } from 'pinyin-pro'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -34,6 +35,7 @@ import {
   HelpCircle,
   MessageSquare,
   BookOpen,
+  Languages,
 } from 'lucide-react'
 
 export default function SpeakPracticePage({
@@ -56,6 +58,7 @@ export default function SpeakPracticePage({
   const [resultsHistory, setResultsHistory] = useState<Record<string, SpeechScoreResult>>({})
   const [isCompleted, setIsCompleted] = useState(false)
   const [isGeneratingAI, setIsGeneratingAI] = useState(false)
+  const [showPinyin, setShowPinyin] = useState(true)
 
   const recognitionRef = useRef<any>(null)
   const supabase = createClient()
@@ -383,8 +386,66 @@ export default function SpeakPracticePage({
   // =========================================================================
   // MÀN HÌNH LUYỆN NÓI CHÍNH (ACTIVE SPEAKING ARENA)
   // =========================================================================
-  const isZh = isChineseText(activeTarget)
+  const isZh = isChineseText(activeTarget) || cards.some((c) => isChineseText(c.term))
   const progressPercent = Math.round(((currentIndex + 1) / cards.length) * 100)
+
+  // Helper lấy chuỗi Pinyin đầy đủ cho câu/từ
+  const getPinyinString = (text: string, fallbackPhonetic?: string | null): string => {
+    if (fallbackPhonetic && fallbackPhonetic.trim()) return fallbackPhonetic.trim()
+    if (!text || !/[\u4e00-\u9fa5]/.test(text)) return ''
+    try {
+      return pinyin(text)
+    } catch {
+      return ''
+    }
+  }
+
+  // Hàm render chữ Hán kèm thẻ <ruby> Pinyin phía trên ngữ cảnh thông minh
+  const renderAnnotatedText = (
+    text: string,
+    options: { size?: 'sm' | 'md' | 'lg'; forcePinyin?: boolean } = {}
+  ) => {
+    const { size = 'md', forcePinyin = false } = options
+    const shouldShowPinyin = (isZh && showPinyin) || forcePinyin
+
+    if (!text || !/[\u4e00-\u9fa5]/.test(text)) {
+      return <span>{text}</span>
+    }
+
+    try {
+      const tokens = pinyin(text, { type: 'all' }) as Array<{
+        origin: string
+        pinyin: string
+        isZh: boolean
+      }>
+
+      const rtClass =
+        size === 'lg'
+          ? 'text-xs sm:text-sm font-normal text-indigo-600 dark:text-indigo-400 select-none pb-0.5'
+          : size === 'sm'
+          ? 'text-[9px] sm:text-[10px] font-normal text-indigo-600 dark:text-indigo-400 select-none pb-0.5'
+          : 'text-[10px] sm:text-[11px] font-normal text-indigo-600 dark:text-indigo-400 select-none pb-0.5'
+
+      return (
+        <span className={shouldShowPinyin ? 'leading-[2.8] sm:leading-[3.2] inline' : 'inline'}>
+          {tokens.map((token, i) => {
+            const hasHanzi = /[\u4e00-\u9fa5]/.test(token.origin)
+            if (hasHanzi && shouldShowPinyin && token.pinyin) {
+              return (
+                <ruby key={i} className="mx-[1px] select-text">
+                  {token.origin}
+                  <rt className={rtClass}>{token.pinyin}</rt>
+                </ruby>
+              )
+            }
+            return <span key={i}>{token.origin}</span>
+          })}
+        </span>
+      )
+    } catch {
+      return <span>{text}</span>
+    }
+  }
 
   return (
     <div className="container max-w-3xl mx-auto py-6 px-4 space-y-6">
@@ -402,6 +463,18 @@ export default function SpeakPracticePage({
         </Link>
 
         <div className="flex items-center gap-2">
+          {isZh && (
+            <Button
+              variant={showPinyin ? 'secondary' : 'outline'}
+              size="sm"
+              onClick={() => setShowPinyin(!showPinyin)}
+              className="text-xs h-7 gap-1 px-2.5"
+            >
+              <Languages className="size-3.5 text-indigo-600" />
+              {showPinyin ? 'Pinyin: BẬT' : 'Pinyin: TẮT'}
+            </Button>
+          )}
+
           <Badge variant="outline" className="font-mono text-xs border-indigo-500/30 text-indigo-600 dark:text-indigo-400">
             {currentIndex + 1} / {cards.length}
           </Badge>
@@ -487,7 +560,7 @@ export default function SpeakPracticePage({
         <CardContent className="p-6 sm:p-10 flex flex-col items-center justify-center text-center space-y-8 min-h-[420px]">
           
           {/* Target Word / Sentence Display */}
-          <div className="space-y-3 max-w-2xl">
+          <div className="space-y-3 max-w-2xl w-full">
             <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center justify-center gap-1.5">
               {targetMode === 'sentence' ? (
                 <>
@@ -503,24 +576,58 @@ export default function SpeakPracticePage({
             </span>
 
             {targetMode === 'sentence' ? (
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <h1 className="text-2xl sm:text-4xl font-black tracking-tight text-foreground leading-relaxed">
-                  {rawSentence}
+                  {renderAnnotatedText(rawSentence, { size: 'lg' })}
                 </h1>
+
+                {/* Dedicated Full Sentence Pinyin Banner */}
+                {getPinyinString(rawSentence) && (
+                  <div className="p-3.5 rounded-2xl bg-indigo-500/10 dark:bg-indigo-950/40 border border-indigo-500/20 max-w-xl mx-auto flex items-center justify-between gap-3 text-left animate-in fade-in">
+                    <div className="flex items-start gap-2 flex-1">
+                      <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5">
+                        🗣️ Pinyin cả câu:
+                      </span>
+                      <span className="font-mono text-sm sm:text-base font-semibold text-foreground leading-relaxed">
+                        {getPinyinString(rawSentence)}
+                      </span>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleSpeakSample(rawSentence, 1.0)}
+                      className="size-8 p-0 shrink-0 text-indigo-600 hover:bg-indigo-500/10 rounded-lg"
+                      title="Nghe phát âm cả câu"
+                    >
+                      <Volume2 className="size-4" />
+                    </Button>
+                  </div>
+                )}
+
                 <p className="text-sm font-medium text-muted-foreground">
-                  Nghĩa của từ trọng tâm: <strong className="text-foreground">{currentCard.term}</strong> ({currentCard.definition})
+                  Nghĩa của từ trọng tâm:{' '}
+                  <strong className="text-foreground">
+                    {renderAnnotatedText(currentCard.term, { size: 'sm' })}
+                  </strong>{' '}
+                  {getPinyinString(currentCard.term, currentCard.phonetic) && (
+                    <span className="font-mono text-xs text-indigo-600 dark:text-indigo-400 font-semibold mr-1">
+                      ({getPinyinString(currentCard.term, currentCard.phonetic)})
+                    </span>
+                  )}
+                  ({currentCard.definition})
                 </p>
               </div>
             ) : (
               <>
                 <h1 className="text-4xl sm:text-6xl font-black tracking-tight text-foreground">
-                  {currentCard.term}
+                  {renderAnnotatedText(currentCard.term, { size: 'lg' })}
                 </h1>
 
-                {currentCard.phonetic && (
+                {getPinyinString(currentCard.term, currentCard.phonetic) && (
                   <div className="inline-block">
-                    <span className="text-base sm:text-lg font-mono font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 px-4 py-1 rounded-full border border-indigo-500/20">
-                      {currentCard.phonetic}
+                    <span className="text-base sm:text-lg font-mono font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 px-4 py-1.5 rounded-full border border-indigo-500/20 flex items-center gap-2">
+                      <span>🗣️ {getPinyinString(currentCard.term, currentCard.phonetic)}</span>
                     </span>
                   </div>
                 )}
@@ -537,10 +644,14 @@ export default function SpeakPracticePage({
                         setTargetMode('sentence')
                         setScoreResult(null)
                       }}
-                      className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center justify-center gap-1 mx-auto bg-indigo-500/10 py-1.5 px-3 rounded-xl border border-indigo-500/20 font-medium"
+                      className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center justify-center gap-1.5 mx-auto bg-indigo-500/10 py-1.5 px-3 rounded-xl border border-indigo-500/20 font-medium"
                     >
-                      <MessageSquare className="size-3" />
-                      VD: {currentCard.example_sentence} (Bấm để luyện cả câu)
+                      <MessageSquare className="size-3 shrink-0" />
+                      <span>VD: {currentCard.example_sentence}</span>
+                      {getPinyinString(currentCard.example_sentence) && (
+                        <span className="font-mono opacity-80">({getPinyinString(currentCard.example_sentence)})</span>
+                      )}
+                      <span className="font-bold ml-1">→ Bấm để luyện cả câu</span>
                     </button>
                   </div>
                 )}
@@ -639,6 +750,11 @@ export default function SpeakPracticePage({
                 <p className="font-medium text-foreground italic">
                   "{scoreResult.transcript || '(Không nghe rõ âm thanh)'}"
                 </p>
+                {getPinyinString(scoreResult.transcript) && (
+                  <p className="text-[11px] font-mono text-muted-foreground pt-0.5">
+                    (Phiên âm: {getPinyinString(scoreResult.transcript)})
+                  </p>
+                )}
               </div>
 
               {/* Word by word breakdown feedback */}
@@ -646,18 +762,24 @@ export default function SpeakPracticePage({
                 <div className="space-y-1.5">
                   <p className="text-[11px] font-semibold text-muted-foreground">Đánh giá chi tiết từng từ:</p>
                   <div className="flex flex-wrap gap-1.5">
-                    {scoreResult.wordFeedback.map((wf, idx) => (
-                      <span
-                        key={idx}
-                        className={`text-xs px-2 py-0.5 rounded-md font-semibold border ${
-                          wf.isCorrect
-                            ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/40'
-                            : 'bg-rose-500/20 text-rose-700 dark:text-rose-300 border-rose-500/40'
-                        }`}
-                      >
-                        {wf.word}
-                      </span>
-                    ))}
+                    {scoreResult.wordFeedback.map((wf, idx) => {
+                      const charPinyin = getPinyinString(wf.word)
+                      return (
+                        <span
+                          key={idx}
+                          className={`text-xs px-2 py-1 rounded-md font-semibold border flex flex-col items-center leading-none ${
+                            wf.isCorrect
+                              ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/40'
+                              : 'bg-rose-500/20 text-rose-700 dark:text-rose-300 border-rose-500/40'
+                          }`}
+                        >
+                          {charPinyin && (
+                            <span className="text-[9px] font-mono opacity-80 pb-0.5">{charPinyin}</span>
+                          )}
+                          <span className="text-sm font-bold">{wf.word}</span>
+                        </span>
+                      )
+                    })}
                   </div>
                 </div>
               )}
@@ -690,3 +812,4 @@ export default function SpeakPracticePage({
     </div>
   )
 }
+
