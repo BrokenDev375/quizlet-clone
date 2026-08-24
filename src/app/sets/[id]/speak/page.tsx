@@ -211,9 +211,6 @@ export default function SpeakPracticePage({
 
           if (result.isPassed) {
             playSuccessChime()
-            setTimeout(() => {
-              handleNextCard()
-            }, 2000)
           } else {
             playRetryBeep()
           }
@@ -814,6 +811,19 @@ export default function SpeakPracticePage({
                   </div>
                 </div>
               )}
+
+              {scoreResult.isPassed && (
+                <div className="pt-2 flex justify-end">
+                  <Button
+                    size="sm"
+                    onClick={handleNextCard}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs gap-1.5 shadow-sm"
+                  >
+                    <span>{currentIndex < cards.length - 1 ? 'Sang câu tiếp theo' : 'Xem tổng kết'}</span>
+                    <ArrowRight className="size-3.5" />
+                  </Button>
+                </div>
+              )}
             </div>
           )}
 
@@ -830,12 +840,17 @@ export default function SpeakPracticePage({
             </Button>
 
             <Button
-              variant="outline"
+              variant={currentIndex === cards.length - 1 ? 'default' : 'outline'}
               size="sm"
               onClick={handleNextCard}
-              className="gap-1 text-xs"
+              className={`gap-1 text-xs ${
+                currentIndex === cards.length - 1
+                  ? 'bg-indigo-600 hover:bg-indigo-700 text-white font-semibold'
+                  : ''
+              }`}
             >
-              Thẻ kế tiếp <ArrowRight className="size-3.5" />
+              {currentIndex === cards.length - 1 ? 'Xem tổng kết' : 'Thẻ kế tiếp'}{' '}
+              <ArrowRight className="size-3.5" />
             </Button>
           </div>
         </CardContent>
