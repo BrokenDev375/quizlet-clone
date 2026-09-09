@@ -14,6 +14,7 @@ import {
   Trash2, 
   Sparkles, 
   FileText, 
+  FileSpreadsheet,
   Globe, 
   Lock, 
   ArrowLeft, 
@@ -22,6 +23,7 @@ import {
   Wand2,
 } from 'lucide-react'
 import Link from 'next/link'
+import QuickImportModal, { ParsedCardItem } from '@/components/QuickImportModal'
 
 interface CardItem {
   id: string
@@ -41,7 +43,6 @@ export default function NewSetPage() {
     { id: '3', term: '', phonetic: '', definition: '', example_sentence: '' },
   ])
   const [importOpen, setImportOpen] = useState(false)
-  const [importText, setImportText] = useState('')
   const [loading, setLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [user, setUser] = useState<any>(null)
@@ -110,54 +111,20 @@ export default function NewSetPage() {
     setCards(updated)
   }
 
-  const handleImport = () => {
-    if (!importText.trim()) return
+  const handleCardsImported = (importedCards: ParsedCardItem[], mode: 'append' | 'replace') => {
+    const formatted: CardItem[] = importedCards.map((c) => ({
+      id: c.id || Math.random().toString(36).substring(2, 9),
+      term: c.term,
+      phonetic: c.phonetic || '',
+      definition: c.definition,
+      example_sentence: c.example_sentence || '',
+    }))
 
-    const lines = importText.split('\n')
-    const parsedCards: CardItem[] = []
-
-    lines.forEach((line) => {
-      const trimmed = line.trim()
-      if (!trimmed) return
-
-      let parts: string[] = []
-      if (trimmed.includes('\t')) {
-        parts = trimmed.split('\t')
-      } else if (trimmed.includes(' - ')) {
-        parts = trimmed.split(' - ')
-      } else if (trimmed.includes(',')) {
-        parts = trimmed.split(',')
-      } else {
-        parts = [trimmed, '']
-      }
-
-      if (parts.length >= 2) {
-        const term = parts[0]?.trim() || ''
-        let phonetic = parts.length >= 4 ? parts[1]?.trim() : ''
-        const definition = parts.length >= 4 ? parts[2]?.trim() : parts[1]?.trim() || ''
-        const example_sentence = parts.length >= 4 ? parts[3]?.trim() : parts[2]?.trim() || ''
-
-        // Tự động sinh Pinyin nếu thiếu
-        if (!phonetic && /[\u4e00-\u9fa5]/.test(term)) {
-          try {
-            phonetic = pinyin(term)
-          } catch (e) {}
-        }
-
-        parsedCards.push({
-          id: Math.random().toString(36).substring(2, 9),
-          term,
-          phonetic,
-          definition,
-          example_sentence,
-        })
-      }
-    })
-
-    if (parsedCards.length > 0) {
-      setCards([...cards.filter((c) => c.term.trim() || c.definition.trim()), ...parsedCards])
-      setImportText('')
-      setImportOpen(false)
+    if (mode === 'replace') {
+      setCards(formatted)
+    } else {
+      const existingFilled = cards.filter((c) => c.term.trim() || c.definition.trim())
+      setCards([...existingFilled, ...formatted])
     }
   }
 
@@ -271,10 +238,10 @@ export default function NewSetPage() {
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => setImportOpen(!importOpen)}
-              className="gap-1.5 text-xs flex-1 sm:flex-initial"
+              onClick={() => setImportOpen(true)}
+              className="gap-1.5 text-xs flex-1 sm:flex-initial text-emerald-600 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10"
             >
-              <FileText className="size-3.5" /> Nhập nhanh (CSV)
+              <FileSpreadsheet className="size-3.5" /> Nhập nhanh / Excel
             </Button>
 
             <Button
@@ -299,32 +266,13 @@ export default function NewSetPage() {
           </div>
         )}
 
-        {/* Bulk Import Panel */}
-        {importOpen && (
-          <Card className="border-indigo-500/30 bg-indigo-500/5 transition">
-            <CardContent className="p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="font-semibold text-sm">Nhập dữ liệu nhanh</span>
-                <span className="text-xs text-muted-foreground">Định dạng: Từ vựng - Định nghĩa (hoặc Từ - Phiên âm - Định nghĩa - Ví dụ)</span>
-              </div>
-              <Textarea
-                placeholder={`Hello - Xin chào\n你好 - Xin chào (Hệ thống tự điền Pinyin: nǐ hǎo)\nSerendipity - /ˌser.ənˈdɪp.ə.ti/ - Sự tình cờ may mắn - It was pure [serendipity]`}
-                value={importText}
-                onChange={(e) => setImportText(e.target.value)}
-                rows={4}
-                className="bg-background font-mono text-xs"
-              />
-              <div className="flex justify-end gap-2">
-                <Button type="button" variant="ghost" size="sm" onClick={() => setImportOpen(false)}>
-                  Hủy
-                </Button>
-                <Button type="button" size="sm" onClick={handleImport}>
-                  Nhập vào bộ thẻ
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        {/* Quick Import Modal */}
+        <QuickImportModal
+          isOpen={importOpen}
+          onClose={() => setImportOpen(false)}
+          onImport={handleCardsImported}
+          existingCount={cards.filter((c) => c.term.trim() || c.definition.trim()).length}
+        />
 
         {/* Set metadata */}
         <div className="space-y-4">

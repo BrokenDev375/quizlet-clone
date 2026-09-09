@@ -10,7 +10,8 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent } from '@/components/ui/card'
 import { unpackCardContent, packCardDefinition } from '@/lib/quiz/card-serialization'
-import { Plus, Trash2, Globe, Lock, ArrowLeft, Loader2, AlertCircle, Wand2 } from 'lucide-react'
+import { Plus, Trash2, Globe, Lock, ArrowLeft, Loader2, AlertCircle, Wand2, FileSpreadsheet } from 'lucide-react'
+import QuickImportModal, { ParsedCardItem } from '@/components/QuickImportModal'
 
 interface CardItem {
   id?: string
@@ -28,6 +29,7 @@ export default function EditSetPage({ params }: { params: Promise<{ id: string }
   const [description, setDescription] = useState('')
   const [isPublic, setIsPublic] = useState(true)
   const [cards, setCards] = useState<CardItem[]>([])
+  const [importOpen, setImportOpen] = useState(false)
   const [initialLoading, setInitialLoading] = useState(true)
   const [loading, setLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
@@ -128,6 +130,23 @@ export default function EditSetPage({ params }: { params: Promise<{ id: string }
       return c
     })
     setCards(updated)
+  }
+
+  const handleCardsImported = (importedCards: ParsedCardItem[], mode: 'append' | 'replace') => {
+    const formatted: CardItem[] = importedCards.map((c) => ({
+      id: c.id || Math.random().toString(36).substring(2, 9),
+      term: c.term,
+      phonetic: c.phonetic || '',
+      definition: c.definition,
+      example_sentence: c.example_sentence || '',
+    }))
+
+    if (mode === 'replace') {
+      setCards(formatted)
+    } else {
+      const existingFilled = cards.filter((c) => c.term.trim() || c.definition.trim())
+      setCards([...existingFilled, ...formatted])
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -244,6 +263,16 @@ export default function EditSetPage({ params }: { params: Promise<{ id: string }
             </Button>
 
             <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setImportOpen(true)}
+              className="gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10"
+            >
+              <FileSpreadsheet className="size-3.5" /> Nhập nhanh / Excel
+            </Button>
+
+            <Button
               type="submit"
               disabled={loading}
               className="bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white font-medium shadow-md shadow-indigo-500/20"
@@ -260,6 +289,14 @@ export default function EditSetPage({ params }: { params: Promise<{ id: string }
             <span>{errorMsg}</span>
           </div>
         )}
+
+        {/* Quick Import Modal */}
+        <QuickImportModal
+          isOpen={importOpen}
+          onClose={() => setImportOpen(false)}
+          onImport={handleCardsImported}
+          existingCount={cards.filter((c) => c.term.trim() || c.definition.trim()).length}
+        />
 
         {/* Set Details */}
         <div className="space-y-4">
