@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent } from '@/components/ui/card'
 import { packCardDefinition } from '@/lib/quiz/card-serialization'
+import { insertCardsInBatches } from '@/lib/quiz/cards-service'
 import { 
   Plus, 
   Trash2, 
@@ -165,33 +166,8 @@ export default function NewSetPage() {
 
       if (setError) throw setError
 
-      // 2. Insert Cards
-      const cardPayload = validCards.map((c, idx) => ({
-        set_id: setData.id,
-        term: c.term.trim(),
-        phonetic: c.phonetic?.trim() || null,
-        definition: c.definition.trim(),
-        example_sentence: c.example_sentence?.trim() || null,
-        position: idx,
-      }))
-
-      let { error: cardsError } = await supabase
-        .from('cards')
-        .insert(cardPayload)
-
-      if (cardsError) {
-        console.warn('Direct column insert failed, using packed definition fallback:', cardsError.message)
-        const packedCards = validCards.map((c, idx) => ({
-          set_id: setData.id,
-          term: c.term.trim(),
-          definition: packCardDefinition(c.definition, c.phonetic, c.example_sentence),
-          position: idx,
-        }))
-        const fallbackRes = await supabase.from('cards').insert(packedCards)
-        cardsError = fallbackRes.error
-      }
-
-      if (cardsError) throw cardsError
+      // 2. Insert Cards theo từng batch an toàn (tránh timeout/quá tải payload khi tạo hàng nghìn thẻ)
+      await insertCardsInBatches(supabase, setData.id, validCards, 500)
 
       router.push(`/sets/${setData.id}`)
       router.refresh()

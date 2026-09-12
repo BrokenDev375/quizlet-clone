@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { FlashcardSet, Card as CardType } from '@/types/database.types'
+import { fetchAllCards } from '@/lib/quiz/cards-service'
 import {
   QuizQuestion,
   QuestionType,
@@ -82,15 +83,15 @@ export default function TestModePage({
       }
       setSet(setData)
 
-      const { data: cardsData } = await supabase
-        .from('cards')
-        .select('*')
-        .eq('set_id', setId)
-
-      if (cardsData && cardsData.length > 0) {
-        setAllCards(cardsData)
-        // Mặc định chọn số câu bằng số thẻ hoặc 20 câu
-        setQuestionCount(Math.min(cardsData.length * 2, 40))
+      try {
+        const cardsData = await fetchAllCards(supabase, setId)
+        if (cardsData && cardsData.length > 0) {
+          setAllCards(cardsData)
+          // Mặc định chọn số câu bằng số thẻ hoặc tối đa 40 câu
+          setQuestionCount(Math.min(cardsData.length * 2, 40))
+        }
+      } catch (err: any) {
+        console.error('Lỗi khi nạp thẻ làm bài thi:', err)
       }
 
       setLoading(false)

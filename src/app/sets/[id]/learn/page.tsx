@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { FlashcardSet, Card as CardType } from '@/types/database.types'
 import { unpackCardContent } from '@/lib/quiz/card-serialization'
+import { fetchAllCards, fetchStudyProgressForCards } from '@/lib/quiz/cards-service'
 import { getStudySession, saveStudySession, clearStudySession } from '@/lib/quiz/study-session'
 import {
   QuizQuestion,
@@ -91,28 +92,27 @@ export default function LearnModePage({
       }
       setSet(setData)
 
-      const { data: cardsData } = await supabase
-        .from('cards')
-        .select('*')
-        .eq('set_id', setId)
+      let unpacked: any[] = []
+      try {
+        unpacked = await fetchAllCards(supabase, setId)
+      } catch (err: any) {
+        console.error('Lỗi khi nạp danh sách thẻ:', err)
+      }
 
-      if (cardsData && cardsData.length > 0) {
-        const unpacked = cardsData.map(unpackCardContent)
+      if (unpacked && unpacked.length > 0) {
         setAllCards(unpacked)
 
-        // 1.1 Đọc tiến độ từ Database Supabase (study_progress)
+        // 1.1 Đọc tiến độ từ Database Supabase (study_progress theo batch)
         let dbProgressMap: Record<string, any> = {}
         if (currentUser) {
-          const { data: progressRows } = await supabase
-            .from('study_progress')
-            .select('*')
-            .eq('user_id', currentUser.id)
-            .in('card_id', unpacked.map((c) => c.id))
-
-          if (progressRows && progressRows.length > 0) {
-            progressRows.forEach((row) => {
-              dbProgressMap[row.card_id] = row
-            })
+          try {
+            dbProgressMap = await fetchStudyProgressForCards(
+              supabase,
+              currentUser.id,
+              unpacked.map((c) => c.id)
+            )
+          } catch (pErr: any) {
+            console.error('Lỗi nạp study_progress:', pErr)
           }
         }
 

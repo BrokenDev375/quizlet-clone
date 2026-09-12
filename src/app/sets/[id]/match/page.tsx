@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { FlashcardSet, Card as CardType } from '@/types/database.types'
+import { fetchAllCards } from '@/lib/quiz/cards-service'
 import { speakMultilingualText } from '@/lib/quiz/sentence-templates'
 import { playSuccessChime, playRetryBeep } from '@/lib/quiz/speech-recognition'
 import { Button } from '@/components/ui/button'
@@ -62,15 +63,14 @@ export default function MatchGamePage({ params }: { params: Promise<{ id: string
       }
       setSet(setData)
 
-      const { data: cardsData } = await supabase
-        .from('cards')
-        .select('*')
-        .eq('set_id', setId)
-        .order('position', { ascending: true })
-
-      if (cardsData && cardsData.length > 0) {
-        setAllCards(cardsData)
-        setupGame(cardsData)
+      try {
+        const cardsData = await fetchAllCards(supabase, setId)
+        if (cardsData && cardsData.length > 0) {
+          setAllCards(cardsData)
+          setupGame(cardsData)
+        }
+      } catch (err: any) {
+        console.error('Lỗi nạp thẻ trò chơi ghép thẻ:', err)
       }
 
       setLoading(false)

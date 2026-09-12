@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent } from '@/components/ui/card'
 import { unpackCardContent, packCardDefinition } from '@/lib/quiz/card-serialization'
+import { fetchAllCards, insertCardsInBatches } from '@/lib/quiz/cards-service'
 import { Plus, Trash2, Globe, Lock, ArrowLeft, Loader2, AlertCircle, Wand2, FileSpreadsheet } from 'lucide-react'
 import QuickImportModal, { ParsedCardItem } from '@/components/QuickImportModal'
 
@@ -67,15 +68,12 @@ export default function EditSetPage({ params }: { params: Promise<{ id: string }
       setDescription(setData.description || '')
       setIsPublic(setData.is_public)
 
-      // Fetch Cards
-      const { data: cardsData } = await supabase
-        .from('cards')
-        .select('*')
-        .eq('set_id', setId)
-        .order('position', { ascending: true })
-
-      if (cardsData) {
-        setCards(cardsData.map(unpackCardContent))
+      // Fetch all Cards with auto-pagination
+      try {
+        const unpackedCards = await fetchAllCards(supabase, setId)
+        setCards(unpackedCards)
+      } catch (err: any) {
+        console.error('Lỗi khi nạp danh sách thẻ:', err)
       }
 
       setInitialLoading(false)
@@ -180,7 +178,7 @@ export default function EditSetPage({ params }: { params: Promise<{ id: string }
 
       if (updateSetError) throw updateSetError
 
-      // 2. Refresh cards: Delete all existing and re-insert
+      // 2. Refresh cards: Delete all existing and re-insert theo từng batch
       const { error: deleteCardsError } = await supabase
         .from('cards')
         .delete()
@@ -188,33 +186,7 @@ export default function EditSetPage({ params }: { params: Promise<{ id: string }
 
       if (deleteCardsError) throw deleteCardsError
 
-      const cardPayload = validCards.map((c, idx) => ({
-        set_id: setId,
-        term: c.term.trim(),
-        phonetic: c.phonetic?.trim() || null,
-        definition: c.definition.trim(),
-        example_sentence: c.example_sentence?.trim() || null,
-        position: idx,
-      }))
-
-      let { error: insertCardsError } = await supabase
-        .from('cards')
-        .insert(cardPayload)
-
-      // Nếu Supabase chưa có cột phonetic / example_sentence -> Tự động đóng gói an toàn vào definition
-      if (insertCardsError) {
-        console.warn('Direct column insert failed, using packed definition fallback:', insertCardsError.message)
-        const packedCards = validCards.map((c, idx) => ({
-          set_id: setId,
-          term: c.term.trim(),
-          definition: packCardDefinition(c.definition, c.phonetic, c.example_sentence),
-          position: idx,
-        }))
-        const fallbackRes = await supabase.from('cards').insert(packedCards)
-        insertCardsError = fallbackRes.error
-      }
-
-      if (insertCardsError) throw insertCardsError
+      await insertCardsInBatches(supabase, setId, validCards, 500)
 
       router.push(`/sets/${setId}`)
       router.refresh()

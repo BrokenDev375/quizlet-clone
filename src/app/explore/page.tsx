@@ -47,7 +47,7 @@ function ExploreContent() {
         .select(`
           *,
           profiles:owner_id (id, username, full_name, avatar_url),
-          cards (id)
+          cards (count)
         `)
         .eq('is_public', true)
         .order('created_at', { ascending: false })
@@ -61,7 +61,7 @@ function ExploreContent() {
       if (data) {
         const formatted = data.map((s: any) => ({
           ...s,
-          card_count: s.cards?.length || 0,
+          card_count: s.cards?.[0]?.count ?? (Array.isArray(s.cards) ? s.cards.length : 0),
         }))
         setSets(formatted)
       }

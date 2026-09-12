@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { FlashcardSet, Card as CardType } from '@/types/database.types'
 import { unpackCardContent } from '@/lib/quiz/card-serialization'
+import { fetchAllCards } from '@/lib/quiz/cards-service'
 import {
   generateMultipleReadingPassages,
   ReadingPassage,
@@ -78,14 +79,14 @@ export default function ReadingPage({
       }
       setSet(setData)
 
-      const { data: cardsData } = await supabase
-        .from('cards')
-        .select('*')
-        .eq('set_id', setId)
-        .order('position', { ascending: true })
+      let unpacked: any[] = []
+      try {
+        unpacked = await fetchAllCards(supabase, setId)
+      } catch (err: any) {
+        console.error('Lỗi khi nạp danh sách thẻ:', err)
+      }
 
-      if (cardsData && cardsData.length > 0) {
-        const unpacked = cardsData.map(unpackCardContent)
+      if (unpacked && unpacked.length > 0) {
         setCards(unpacked)
         const genPassages = generateMultipleReadingPassages(unpacked, setData.title)
         setPassages(genPassages)

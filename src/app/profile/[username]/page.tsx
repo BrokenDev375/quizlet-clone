@@ -34,7 +34,7 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
           .from('sets')
           .select(`
             *,
-            cards (id)
+            cards (count)
           `)
           .eq('owner_id', profileData.id)
           .eq('is_public', true)
@@ -43,7 +43,7 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
         if (setsData) {
           const formatted = setsData.map((s: any) => ({
             ...s,
-            card_count: s.cards?.length || 0,
+            card_count: s.cards?.[0]?.count ?? (Array.isArray(s.cards) ? s.cards.length : 0),
           }))
           setSets(formatted)
         }

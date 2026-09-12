@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { FlashcardSet, Card as CardType, SetStudySession } from '@/types/database.types'
 import { unpackCardContent } from '@/lib/quiz/card-serialization'
+import { fetchAllCards } from '@/lib/quiz/cards-service'
 import { getStudySession, saveStudySession, clearStudySession } from '@/lib/quiz/study-session'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -77,15 +78,9 @@ export default function SetDetailPage({ params }: { params: Promise<{ id: string
 
       setSet(setData)
 
-      // Fetch Cards
-      const { data: cardsData } = await supabase
-        .from('cards')
-        .select('*')
-        .eq('set_id', setId)
-        .order('position', { ascending: true })
-
-      if (cardsData) {
-        const unpackedCards = cardsData.map(unpackCardContent)
+      // Fetch all Cards with auto-pagination
+      try {
+        const unpackedCards = await fetchAllCards(supabase, setId)
         setCards(unpackedCards)
 
         // Lấy tiến độ học gần nhất (LocalStorage + Supabase)
@@ -98,6 +93,8 @@ export default function SetDetailPage({ params }: { params: Promise<{ id: string
             }
           }
         } catch (e) {}
+      } catch (cardsErr) {
+        console.error('Lỗi khi nạp danh sách thẻ:', cardsErr)
       }
 
       setLoading(false)
