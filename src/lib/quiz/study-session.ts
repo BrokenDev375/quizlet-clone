@@ -8,7 +8,7 @@ const LOCAL_STORAGE_PREFIX = 'quizlet_study_session_'
  */
 export async function saveStudySession(session: {
   setId: string
-  mode: 'flashcard' | 'learn' | 'grammar' | 'dictation' | 'speak' | 'match' | 'test'
+  mode: SetStudySession['last_mode']
   cardIndex: number
   batchIndex?: number
 }) {

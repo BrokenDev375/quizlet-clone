@@ -21,6 +21,7 @@ import {
   MessageSquare,
   BookMarked,
   BookOpenText,
+  Languages,
   Edit3, 
   ChevronLeft, 
   ChevronRight, 
@@ -291,7 +292,7 @@ export default function SetDetailPage({ params }: { params: Promise<{ id: string
       )}
 
       {/* OpenQuiz Style Skill Learning Modes Navigation Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 gap-3">
         {/* 1. Speaking */}
         <Link href={`/sets/${setId}/speak`} className="group">
           <div className="p-3.5 rounded-2xl border border-border/80 bg-card hover:border-rose-500/50 hover:bg-rose-50/20 dark:hover:bg-rose-950/20 flex items-center gap-3 transition shadow-xs">
@@ -385,13 +386,26 @@ export default function SetDetailPage({ params }: { params: Promise<{ id: string
 
         {/* 8. Ghép thẻ */}
         <Link href={`/sets/${setId}/match`} className="group">
-          <div className="p-3.5 rounded-2xl border border-border/80 bg-card hover:border-amber-500/50 hover:bg-amber-50/20 dark:hover:bg-amber-950/20 flex items-center gap-3 transition shadow-xs">
-            <div className="size-10 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0 group-hover:bg-amber-600 group-hover:text-white transition">
+          <div className="p-3.5 rounded-2xl border border-border/80 bg-card hover:border-orange-500/50 hover:bg-orange-50/20 dark:hover:bg-orange-950/20 flex items-center gap-3 transition shadow-xs">
+            <div className="size-10 rounded-xl bg-orange-500/10 text-orange-600 flex items-center justify-center shrink-0 group-hover:bg-orange-600 group-hover:text-white transition">
               <Gamepad2 className="size-5" />
             </div>
             <div className="min-w-0">
               <p className="text-sm font-bold truncate">Ghép thẻ</p>
               <p className="text-xs text-muted-foreground truncate">Trò chơi tốc độ</p>
+            </div>
+          </div>
+        </Link>
+
+        {/* 9. Dịch câu AI */}
+        <Link href={`/sets/${setId}/translate`} className="group">
+          <div className="p-3.5 rounded-2xl border border-border/80 bg-card hover:border-amber-500/50 hover:bg-amber-50/20 dark:hover:bg-amber-950/20 flex items-center gap-3 transition shadow-xs">
+            <div className="size-10 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0 group-hover:bg-amber-600 group-hover:text-white transition">
+              <Languages className="size-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-bold truncate">Dịch câu AI</p>
+              <p className="text-xs text-muted-foreground truncate">Việt → Trung (HSK)</p>
             </div>
           </div>
         </Link>

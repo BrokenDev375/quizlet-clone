@@ -46,7 +46,7 @@ export interface SetStudySession {
   id?: string
   user_id?: string
   set_id: string
-  last_mode: 'flashcard' | 'learn' | 'grammar' | 'dictation' | 'speak' | 'match' | 'test'
+  last_mode: 'flashcard' | 'learn' | 'grammar' | 'dictation' | 'speak' | 'match' | 'test' | 'translate'
   last_card_index: number
   last_batch_index?: number
   updated_at?: string
