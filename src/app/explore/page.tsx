@@ -46,7 +46,6 @@ function ExploreContent() {
         .from('sets')
         .select(`
           *,
-          profiles:owner_id (id, username, full_name, avatar_url),
           cards (count)
         `)
         .eq('is_public', true)
@@ -162,15 +161,7 @@ function ExploreContent() {
                     </div>
                   </CardContent>
 
-                  <div className="px-5 py-3 border-t border-border/40 flex items-center justify-between text-xs text-muted-foreground">
-                    <div className="flex items-center gap-2">
-                      <div className="size-5 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-bold text-[10px] flex items-center justify-center">
-                        {s.profiles?.username?.[0]?.toUpperCase() || 'U'}
-                      </div>
-                      <span className="line-clamp-1">
-                        {s.profiles?.full_name || s.profiles?.username || 'Thành viên'}
-                      </span>
-                    </div>
+                  <div className="px-5 py-3 border-t border-border/40 flex items-center justify-end text-xs text-muted-foreground">
                     <span className="text-indigo-600 font-medium group-hover:translate-x-1 transition flex items-center gap-1">
                       Học ngay <ArrowRight className="size-3.5" />
                     </span>
