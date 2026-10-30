@@ -9,7 +9,7 @@ import { speakMultilingualText } from '@/lib/quiz/sentence-templates'
 import { playSuccessChime, playRetryBeep } from '@/lib/quiz/speech-recognition'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { ArrowLeft, ArrowRight, RotateCcw, Trophy, Timer, Volume2, VolumeX } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Languages, RotateCcw, Trophy, Timer, Volume2, VolumeX } from 'lucide-react'
 
 const PAIRS_PER_STAGE = 6
 
@@ -72,11 +72,13 @@ function MatchGame({ setId }: { setId: string }) {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [soundEnabled, setSoundEnabled] = useState(true)
+  const [showPinyin, setShowPinyin] = useState(true)
   const [supabase] = useState(createClient)
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const wrongTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const totalStages = Math.ceil(sessionCards.length / PAIRS_PER_STAGE)
+  const hasPinyin = sessionCards.some((card) => Boolean(card.phonetic?.trim()))
   const gameWon = stageComplete && stageIndex === totalStages - 1
   const completedCards = stageIndex * PAIRS_PER_STAGE
     + items.filter((item) => item.type === 'term' && item.isMatched).length
@@ -223,7 +225,23 @@ function MatchGame({ setId }: { setId: string }) {
           Quay lại học phần
         </Link>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {hasPinyin && (
+            <button
+              type="button"
+              onClick={() => setShowPinyin((visible) => !visible)}
+              className={`p-2 rounded-xl border transition flex items-center gap-1.5 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${showPinyin
+                ? 'border-indigo-500/30 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/15'
+                : 'border-border/80 bg-card text-muted-foreground hover:bg-muted/60 hover:text-foreground'}`}
+              title={showPinyin ? 'Ẩn phiên âm Pinyin' : 'Hiện phiên âm Pinyin'}
+              aria-label="Hiển thị Pinyin"
+              aria-pressed={showPinyin}
+            >
+              <Languages className="size-4" />
+              <span>Pinyin: {showPinyin ? 'Bật' : 'Tắt'}</span>
+            </button>
+          )}
+
           <button
             onClick={() => setSoundEnabled(!soundEnabled)}
             className="p-2 rounded-xl border border-border/80 bg-card hover:bg-muted/60 text-muted-foreground hover:text-foreground transition flex items-center gap-1.5 text-xs font-semibold"
@@ -339,7 +357,7 @@ function MatchGame({ setId }: { setId: string }) {
                 className={`h-28 p-3.5 rounded-xl border text-sm font-semibold text-center flex flex-col items-center justify-center shadow-xs transition-all duration-200 cursor-pointer select-none leading-snug overflow-hidden text-ellipsis gap-1 ${tileStyle}`}
               >
                 <span>{item.text}</span>
-                {item.phonetic && (
+                {showPinyin && item.phonetic && (
                   <span className="text-[11px] font-mono text-indigo-600 dark:text-indigo-400 font-normal">
                     {item.phonetic}
                   </span>
